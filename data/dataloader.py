@@ -16,25 +16,26 @@ class Dataloader(object):
     source tables.
     """
     
-    def __init__(self, lens_source_path, nonlens_source_path):
+    def __init__(self, lens_source_path, nonlens_source_path, observation_cutoff=60150):
         self.lens_source_path = lens_source_path
         self.nonlens_source_path = nonlens_source_path
         self.lens = pd.read_csv(lens_source_path)
         self.nonlens = pd.read_csv(nonlens_source_path)
+        
+        self.NUM_TIMES = None # undefined until set_balance is called
+        self.NUM_POSITIVES = self.lens['objectId'].nunique()
+        self.NUM_FILTERS = 5
+        self.seed = 123
         
         self.attributes = ['psf_fwhm', 'x', 'y', 'apFlux', 'apFluxErr', 
                            'apMag', 'apMagErr', 'trace', 'e1', 'e2', 'e', 'phi', 'd_time']
         self.NUM_ATTRIBUTES = len(self.attributes)
         
         self.filtered_attributes = [f + '_' + a for a, f in list(product(self.attributes, 'ugriz'))]
-        assert len(filtered_attributes) == self.NUM_FILTERS * self.NUM_ATTRIBUTES
+        assert len(self.filtered_attributes) == self.NUM_FILTERS * self.NUM_ATTRIBUTES
         
+        self.observation_cutoff = observation_cutoff
         
-        
-        self.NUM_TIMES = None # undefined until set_balance is called
-        self.NUM_POSITIVES = lens['objectId'].nunique()
-        self.NUM_FILTERS = 5
-        self.seed = 123
         
     def set_balance(self, lens, nonlens, observation_cutoff):
         nonlens.query('MJD < @observation_cutoff', inplace=True) # giving up trace < 5.12
@@ -48,7 +49,7 @@ class Dataloader(object):
 
         assert np.array_equal(lens.shape, nonlens.shape)
         
-        return None
+        return lens, nonlens
     
     def set_additional_columns(self, lens, nonlens):
         for src in [lens, nonlens]:
@@ -58,7 +59,7 @@ class Dataloader(object):
             src['MJD'] = src['MJD'] - np.min(src['MJD'].values)
             # Map ccdVisitId to integers starting from 0
             sorted_obs_id = np.sort(src['ccdVisitId'].unique())
-            time_map = dict(zip(sorted_obs_id, range(NUM_TIMES)))
+            time_map = dict(zip(sorted_obs_id, range(self.NUM_TIMES)))
             src['time_index'] = src['ccdVisitId'].map(time_map).astype(int)
             # Add a column of time elapsed since last observation, d_time
             src.sort_values(['objectId', 'MJD'], axis=0, inplace=True)
@@ -68,10 +69,12 @@ class Dataloader(object):
             src.drop(['MJD', 'ccdVisitId'], axis=1, inplace=True)
         gc.collect()
         
-        return None
+        return lens, nonlens
     
     def make_data_array(self, src, truth_value=1):
         
+        print("NUM_TIMES: ", self.NUM_TIMES)
+        print(src.shape[0])
         assert src.shape[0] == self.NUM_POSITIVES*self.NUM_TIMES
         
         # Pivot to get filters in each row
@@ -99,18 +102,18 @@ class Dataloader(object):
         # Pivot to get time sequence in each row
         src = src.pivot_table(index=['objectId'], 
                             columns=['time_index'], 
-                            values=filtered_attributes,
+                            values=self.filtered_attributes,
                             dropna=False)
         gc.collect()
         
         # Collapse multi-indexed column using time-filter_property formatting
         src.columns = src.columns.map('{0[1]}-{0[0]}'.format)
-        src = src.reindex(sorted(src.columns), axis=1, copy=False)
+        #src = src.reindex(sorted(src.columns), axis=1, copy=False)
         
         self.timed_filtered_attributes = [str(t) + '-' + a for a, t in\
                                           list(product(self.filtered_attributes, range(self.NUM_TIMES)))]
-        assert len(timed_filtered_attributes) == self.NUM_FILTERS * self.NUM_ATTRIBUTES * self.NUM_TIMES
-        assert np.array_equal(src.columns.values, np.sort(self.timed_filtered_attributes))
+        assert len(self.timed_filtered_attributes) == self.NUM_FILTERS*self.NUM_ATTRIBUTES*self.NUM_TIMES
+        #assert np.array_equal(src.columns.values, np.sort(self.timed_filtered_attributes))
         assert np.array_equal(src.shape, 
                               (self.NUM_POSITIVES, 
                                self.NUM_ATTRIBUTES*self.NUM_FILTERS*self.NUM_TIMES))
@@ -118,10 +121,11 @@ class Dataloader(object):
         # Set null values to some arbitrary out-of-range value
         # TODO make the value even more meaningless
         src[src.isnull()] = -9999.0
+        gc.collect()
         
         X = src.values.reshape(self.NUM_POSITIVES, 
-                               self.NUM_TIMES,
-                               self.NUM_FILTERS*self.NUM_ATTRIBUTES)
+                               self.NUM_FILTERS*self.NUM_ATTRIBUTES,
+                               self.NUM_TIMES).swapaxes(1, 2)
         y = np.ones((self.NUM_POSITIVES, ))*truth_value
         
         return X, y
@@ -148,23 +152,29 @@ class Dataloader(object):
         
         return X, y
     
-    def source_to_data(self, features_path, label_path, observation_cutoff=60150):
+    def source_to_data(self, features_path, label_path, return_data=False):
         import time
         
         start = time.time()
         
-        self.set_balance(self.lens, self.nonlens, observation_cutoff=observation_cutoff)
-        self.set_additional_columns(self.lens, self.nonlens)
+        self.lens, self.nonlens = self.set_balance(self.lens, 
+                                                   self.nonlens, 
+                                                   observation_cutoff=self.observation_cutoff)
+        self.lens, self.nonlens = self.set_additional_columns(self.lens, self.nonlens)
         X_lens, y_lens = self.make_data_array(self.lens, truth_value=1)
         X_nonlens, y_nonlens = self.make_data_array(self.nonlens, truth_value=0)
         X, y = self.combine_lens_nonlens(lens_data=(X_lens, y_lens),
                                     nonlens_data=(X_nonlens, y_nonlens))
         X, y = self.shuffle_data(X, y)
+        gc.collect()
         
+        # Since savetxt only takes 1d or 2d arrays
+        X = X.reshape(self.NUM_POSITIVES, self.NUM_FILTERS*self.NUM_ATTRIBUTES*self.NUM_TIMES)
         np.savetxt(features_path, X, delimiter=",")
         np.savetxt(label_path, y, delimiter=",")
         
         end = time.time()
         print("Done making the dataset in %0.2f seconds." %(end-start))
         
-        return X, y
+        if return_data:
+            return X, y
