@@ -9,6 +9,10 @@
 .DS_Store
 */practice_notebook.ipynb
 
+# Temp files
+*~
+~#
+
 # Distribution / packaging
 .Python
 env/
