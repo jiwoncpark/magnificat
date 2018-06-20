@@ -80,8 +80,8 @@ class Dataloader(object):
             sorted_obs_id = np.sort(src['ccdVisitId'].unique())
             time_map = dict(zip(sorted_obs_id, range(self.NUM_TIMES)))
             src['time_index'] = src['ccdVisitId'].map(time_map).astype(int)
-            # Add a column of time elapsed since last observation, d_time
-            src.sort_values(['objectId', 'MJD'], axis=0, inplace=True)
+            # Add a column of d_time, time elapsed since last observation in each filter
+            src.sort_values(['objectId', 'filter', 'MJD', ], axis=0, inplace=True)
             src['d_time'] = src['MJD'] - src['MJD'].shift(+1)
             src['d_time'].fillna(0.0, inplace=True)
             src['d_time'] = np.clip(src['d_time'], a_min=0.0, a_max=None)
