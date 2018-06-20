@@ -4,6 +4,17 @@
 import numpy as np
 #import pandas as pd
 
+def fetch_batches(arr1, arr2, batch_size=200):
+    num_examples = arr1.shape[0]
+    batches1 =  [arr1[i*batch_size: (i + 1)*batch_size] for i in range(num_examples/batch_size + 1)]
+    batches2 =  [arr2[i*batch_size: (i + 1)*batch_size] for i in range(num_examples/batch_size + 1)]
+    batches = list(zip(batches1, batches2))
+    return batches
+
+def to_onehot(y, num_classes=2):
+    oh = np.eye(num_classes)[np.array(y).reshape(-1)]
+    return oh
+
 def e1e2_to_ephi(e1, e2):
     e = np.power(np.power(e1, 2.0) + np.power(e2, 2.0), 0.5)
     phi = 0.5*np.arctan(e2/e1)
@@ -92,3 +103,4 @@ def return_mean_properties(lens_array):
     """
     # TODO do not hardcode order, use list comprehension for fixed order?
     return lens_array['flux'].mean(), lens_array['x'].mean(), lens_array['y'].mean(), lens_array['size'].mean(), lens_array['flux_err'].mean(), lens_array['x_com_err'].mean(), lens_array['y_com_err'].mean(), lens_array['size_err'].mean(), lens_array['e1'].mean(), lens_array['e2'].mean()
+    

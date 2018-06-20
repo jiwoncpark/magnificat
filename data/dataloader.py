@@ -16,7 +16,8 @@ class Dataloader(object):
     source tables.
     """
     
-    def __init__(self, lens_source_path, nonlens_source_path, observation_cutoff=60150):
+    def __init__(self, lens_source_path, nonlens_source_path, 
+                 onehot_filters=False, observation_cutoff=60000, debug=False):
         self.lens_source_path = lens_source_path
         self.nonlens_source_path = nonlens_source_path
         self.lens = pd.read_csv(lens_source_path)
@@ -34,14 +35,23 @@ class Dataloader(object):
         self.filtered_attributes = [f + '_' + a for a, f in list(product(self.attributes, 'ugriz'))]
         assert len(self.filtered_attributes) == self.NUM_FILTERS * self.NUM_ATTRIBUTES
         
+        self.onehot_filters = onehot_filters
         self.observation_cutoff = observation_cutoff
-        
+        self.DEBUG = debug
         
     def set_balance(self, lens, nonlens, observation_cutoff):
-        nonlens.query('MJD < @observation_cutoff', inplace=True) # giving up trace < 5.12
+        """
+        Sets the balance in numbers of objects and observations
+        between lenses and nonlenses
+        """
+        
+        # Get same number of observations, up to @observation_cutoff
+        nonlens.query('MJD < @observation_cutoff', inplace=True)
+        lens.query('MJD < @observation_cutoff', inplace=True)# giving up trace < 5.12
         # & objectId < (@min_nonlensid + @NUM_POSITIVES)
         self.NUM_TIMES = nonlens['MJD'].nunique()
         assert nonlens['MJD'].nunique() == lens['MJD'].nunique()
+        
         # Get same number of lenses as lens sample
         final_nonlenses = nonlens['objectId'].unique()[: self.NUM_POSITIVES]
         nonlens = nonlens[nonlens['objectId'].isin(final_nonlenses)]
@@ -52,6 +62,15 @@ class Dataloader(object):
         return lens, nonlens
     
     def set_additional_columns(self, lens, nonlens):
+        """
+        Reorganizes existing columns into forms that will
+        be useful in our data generation. In particular:
+        (1) Converts units from e1, e2 to e, phi
+        (2) Creates a column of time elapsed since last observation
+        (3) Creates a column of time index (later to become prefixes to rows)
+        (4) Deletes columns of MJD, ccdVisitId afterward
+        """
+        
         for src in [lens, nonlens]:
             # Add e, phi columns
             src['e'], src['phi'] = e1e2_to_ephi(e1=src['e1'], e2=src['e2'])
@@ -72,60 +91,99 @@ class Dataloader(object):
         return lens, nonlens
     
     def make_data_array(self, src, truth_value=1):
+        """
+        Performs a series of Pandas manipulations
+        to get data into the shape we need, i.e.
+        (@NUM_POSITIVES, @NUM_TIMES, @NUM_FILTERS).
+        Refer to comments for more detail.
+        """
         
-        print("NUM_TIMES: ", self.NUM_TIMES)
-        print(src.shape[0])
+        if self.DEBUG:
+            print("NUM_TIMES: ", self.NUM_TIMES)
+            print(src.shape[0])
         assert src.shape[0] == self.NUM_POSITIVES*self.NUM_TIMES
         
-        # Pivot to get filters in each row
-        src = src.pivot_table(index=['objectId', 'time_index'], 
-                              columns=['filter'], 
-                              values=self.attributes,
-                              dropna=False)
+        if self.onehot_filters:
+            # 1. One-hot encode the filter column into u, g, r, i, z
+            src = pd.get_dummies(data=src, prefix='', prefix_sep='', columns=['filter'])
+            #src.reset_index(inplace=True)
+            gc.collect()
+            assert np.array_equal(src.shape, 
+                                  (self.NUM_POSITIVES*self.NUM_TIMES,
+                                   self.NUM_ATTRIBUTES + self.NUM_FILTERS + 2))
+                                # 2 refers to objectId, time_index
+                
+            # 2. Pivot to get time sequence in each row
+            ohfiltered_attributes = self.attributes[:] + ['u', 'g', 'r', 'i', 'z']
+            src = src.pivot_table(index=['objectId'], 
+                                columns=['time_index'], 
+                                values=ohfiltered_attributes,
+                                dropna=False)
 
-        # Collapse multi-indexed column using filter_property formatting
-        src.columns = src.columns.map('{0[1]}_{0[0]}'.format)
+            # 3. Collapse multi-indexed column with '-' between time and ohfiltered_attribute
+            src.columns = src.columns.map('{0[1]}-{0[0]}'.format)
+            timed_ohfiltered_attributes = [str(t) + '-' + a for a, t in\
+                                              list(product(ohfiltered_attributes, range(self.NUM_TIMES)))]
+            gc.collect()
+            assert np.array_equal(src.shape, 
+                                  (self.NUM_POSITIVES, 
+                                   (self.NUM_ATTRIBUTES + self.NUM_FILTERS)*self.NUM_TIMES))
+                                 
+        else:    
+            # 1. Pivot to get filters in each row
+            src = src.pivot_table(index=['objectId', 'time_index'], 
+                                  columns=['filter'], 
+                                  values=self.attributes,
+                                  dropna=False)
 
-        assert np.array_equal(src.shape, 
-                              (self.NUM_POSITIVES*self.NUM_TIMES, 
-                               self.NUM_ATTRIBUTES*self.NUM_FILTERS))
-        
-        src.reset_index(inplace=True) #.set_index('objectId')
-        gc.collect()
+            # 2. Collapse multi-indexed column using filter_property formatting
+            src.columns = src.columns.map('{0[1]}_{0[0]}'.format)
+            assert np.array_equal(src.shape, 
+                                  (self.NUM_POSITIVES*self.NUM_TIMES, 
+                                   self.NUM_ATTRIBUTES*self.NUM_FILTERS))
 
-        assert np.array_equal(src.shape, 
-                              (self.NUM_POSITIVES*self.NUM_TIMES, 
-                               self.NUM_ATTRIBUTES*self.NUM_FILTERS + 2))
-        assert np.array_equal(np.setdiff1d(src.columns.values, self.filtered_attributes), 
-                              np.array(['objectId', 'time_index']))
+            src.reset_index(inplace=True) #.set_index('objectId')
+            gc.collect()
+            assert np.array_equal(src.shape, 
+                                  (self.NUM_POSITIVES*self.NUM_TIMES, 
+                                   self.NUM_ATTRIBUTES*self.NUM_FILTERS + 2))
+            assert np.array_equal(np.setdiff1d(src.columns.values, self.filtered_attributes), 
+                                  np.array(['objectId', 'time_index']))
         
-        # Pivot to get time sequence in each row
-        src = src.pivot_table(index=['objectId'], 
-                            columns=['time_index'], 
-                            values=self.filtered_attributes,
-                            dropna=False)
-        gc.collect()
-        
-        # Collapse multi-indexed column using time-filter_property formatting
-        src.columns = src.columns.map('{0[1]}-{0[0]}'.format)
-        #src = src.reindex(sorted(src.columns), axis=1, copy=False)
-        
-        self.timed_filtered_attributes = [str(t) + '-' + a for a, t in\
-                                          list(product(self.filtered_attributes, range(self.NUM_TIMES)))]
-        assert len(self.timed_filtered_attributes) == self.NUM_FILTERS*self.NUM_ATTRIBUTES*self.NUM_TIMES
-        #assert np.array_equal(src.columns.values, np.sort(self.timed_filtered_attributes))
-        assert np.array_equal(src.shape, 
-                              (self.NUM_POSITIVES, 
-                               self.NUM_ATTRIBUTES*self.NUM_FILTERS*self.NUM_TIMES))
+            # 3. Pivot to get time sequence in each row
+            src = src.pivot_table(index=['objectId'], 
+                                columns=['time_index'], 
+                                values=self.filtered_attributes,
+                                dropna=False)
+            gc.collect()
+
+            # 4. Collapse multi-indexed column using time-filter_property formatting
+            src.columns = src.columns.map('{0[1]}-{0[0]}'.format)
+            #src = src.reindex(sorted(src.columns), axis=1, copy=False)
+
+            self.timed_filtered_attributes = [str(t) + '-' + a for a, t in\
+                                              list(product(self.filtered_attributes, range(self.NUM_TIMES)))]
+            assert len(self.timed_filtered_attributes) == self.NUM_FILTERS*self.NUM_ATTRIBUTES*self.NUM_TIMES
+            #assert np.array_equal(src.columns.values, np.sort(self.timed_filtered_attributes))
+            assert np.array_equal(src.shape, 
+                                  (self.NUM_POSITIVES, 
+                                   self.NUM_ATTRIBUTES*self.NUM_FILTERS*self.NUM_TIMES))
         
         # Set null values to some arbitrary out-of-range value
         # TODO make the value even more meaningless
         src[src.isnull()] = -9999.0
+        if self.DEBUG:
+            print("Number of null slots: ", src.isnull().sum().sum())
         gc.collect()
         
-        X = src.values.reshape(self.NUM_POSITIVES, 
-                               self.NUM_FILTERS*self.NUM_ATTRIBUTES,
-                               self.NUM_TIMES).swapaxes(1, 2)
+        if self.onehot_filters:
+            X = src.values.reshape(self.NUM_POSITIVES,
+                                    self.NUM_ATTRIBUTES + self.NUM_FILTERS,
+                                    self.NUM_TIMES).swapaxes(1, 2)
+        else:
+            X = src.values.reshape(self.NUM_POSITIVES, 
+                                   self.NUM_FILTERS*self.NUM_ATTRIBUTES,
+                                   self.NUM_TIMES).swapaxes(1, 2)
         y = np.ones((self.NUM_POSITIVES, ))*truth_value
         
         return X, y
@@ -142,11 +200,13 @@ class Dataloader(object):
         X = np.concatenate([X_lens, X_nonlens], axis=0)
         y = np.concatenate([y_lens, y_nonlens], axis=0)
         
+        assert X.shape[0] == 2*self.NUM_POSITIVES
+        
         return X, y
     
     def shuffle_data(self, X, y):
         
-        p = np.random.permutation(self.NUM_POSITIVES)
+        p = np.random.permutation(2*self.NUM_POSITIVES)
         X = X[p, :]
         y = y[p, ]
         
@@ -169,7 +229,7 @@ class Dataloader(object):
         gc.collect()
         
         # Since savetxt only takes 1d or 2d arrays
-        X = X.reshape(self.NUM_POSITIVES, self.NUM_FILTERS*self.NUM_ATTRIBUTES*self.NUM_TIMES)
+        X = X.reshape(2*self.NUM_POSITIVES, -1)
         np.savetxt(features_path, X, delimiter=",")
         np.savetxt(label_path, y, delimiter=",")
         

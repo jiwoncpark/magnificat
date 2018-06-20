@@ -14,7 +14,7 @@ y_path = os.path.join(data_path, 'labels.csv')
 
 dl = Dataloader(lens_source_path=lens_source_f,
                 nonlens_source_path=nonlens_source_f,
-                observation_cutoff=60150)
+                observation_cutoff=60000, onehot_filters=True, debug=True)
 
 dl.source_to_data(features_path=X_path,
                   label_path=y_path, return_data=False)
