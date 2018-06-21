@@ -2,6 +2,7 @@
 *.csv
 *.txt
 *.fits
+*.npy
 
 # Jupyter notebook
 .ipynb_checkpoints

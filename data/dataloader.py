@@ -17,7 +17,7 @@ class Dataloader(object):
     """
     
     def __init__(self, lens_source_path, nonlens_source_path, 
-                 onehot_filters=False, observation_cutoff=60000, debug=False):
+                 onehot_filters=False, observation_cutoff=np.inf, debug=False):
         self.lens_source_path = lens_source_path
         self.nonlens_source_path = nonlens_source_path
         self.lens = pd.read_csv(lens_source_path)
@@ -212,7 +212,7 @@ class Dataloader(object):
         
         return X, y
     
-    def source_to_data(self, features_path, label_path, return_data=False):
+    def source_to_data(self, features_path, labels_path, return_data=False):
         import time
         
         start = time.time()
@@ -228,10 +228,12 @@ class Dataloader(object):
         X, y = self.shuffle_data(X, y)
         gc.collect()
         
+        np.save(features_path, X)
+        np.save(labels_path, y)
         # Since savetxt only takes 1d or 2d arrays
-        X = X.reshape(2*self.NUM_POSITIVES, -1)
-        np.savetxt(features_path, X, delimiter=",")
-        np.savetxt(label_path, y, delimiter=",")
+        #X = X.reshape(2*self.NUM_POSITIVES, -1)
+        #np.savetxt(features_path, X, delimiter=",")
+        #np.savetxt(label_path, y, delimiter=",")
         
         end = time.time()
         print("Done making the dataset in %0.2f seconds." %(end-start))

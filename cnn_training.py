@@ -14,15 +14,10 @@ from data_utils import *
 import tensorflow as tf
 import time
 
-features_path = os.path.join(data_path, 'features.csv')
-label_path = os.path.join(data_path, 'labels.csv')
+features_path = os.path.join(data_path, 'features.npy')
+label_path = os.path.join(data_path, 'labels.npy')
 
-#NUM_POSITIVES = 15631
-NUM_POSITIVES = 156
-NUM_TIMES = 60
-NUM_ATTRIBUTES = 13
-NUM_FILTERS = 5
-NUM_CHANNELS = NUM_ATTRIBUTES + NUM_FILTERS
+DEBUG = True
 
 # Training hyperparameters
 BATCH_SIZE = 500
@@ -32,8 +27,13 @@ KEEP_PROB = 1.0
 NUM_CLASSES = 2
 
 start_data = time.time()
-X = np.loadtxt(features_path, delimiter=',').reshape(NUM_POSITIVES*2, NUM_TIMES, NUM_CHANNELS)
-y = np.loadtxt(label_path, delimiter=',').astype(int)
+
+#X = np.loadtxt(features_path, delimiter=',').reshape(NUM_OBJECTS, NUM_TIMES, NUM_CHANNELS)
+#y = np.loadtxt(label_path, delimiter=',').astype(int)
+X = np.load(features_path)
+y = np.load(label_path).reshape(-1).astype(int)
+
+NUM_OBJECTS, NUM_TIMES, NUM_CHANNELS = X.shape
 
 X_train, X_val, y_train, y_val = train_test_split(X, y, train_size=0.9, stratify=y, random_state=123)
 
@@ -57,23 +57,31 @@ with graph.as_default():
 
 print("Setting up network graph...")
 with graph.as_default():
-    # (batch, 64, 65) --> (batch, 64, 65)
-    conv0 = tf.layers.conv1d(inputs=inputs_, filters=65, kernel_size=1, strides=1,
+    # (batch, 738, 18) --> (batch, 738, 18)
+    conv0 = tf.layers.conv1d(inputs=inputs_, filters=NUM_CHANNELS, kernel_size=1, strides=1,
                              padding='same', activation = tf.nn.relu)
-    #max_pool_0 = tf.layers.max_pooling1d(inputs=conv0, pool_size=2, strides=2, padding='same')
+    if DEBUG: print("After conv0: ", conv0.shape)
 
-    conv00 = tf.layers.conv1d(inputs=conv0, filters=65*2, kernel_size=1, strides=1,
+    # (batch, 738, 18) --> (batch, 369, 36)
+    conv00 = tf.layers.conv1d(inputs=conv0, filters=NUM_CHANNELS*2, kernel_size=1, strides=1,
                               padding='same', activation = tf.nn.relu)
+    max_pool_00 = tf.layers.max_pooling1d(inputs=conv00, pool_size=2, strides=2, padding='same')
 
-    # (batch, 64, #65 130) --> (batch, 32, #130 260)
-    conv1 = tf.layers.conv1d(inputs=conv00, filters=65*4, kernel_size=2, strides=1, 
+    if DEBUG: print("After conv00, max_pool00: ", max_pool_00.shape)
+
+    # (batch, 369, 36) --> (batch, 123, 108)
+    conv1 = tf.layers.conv1d(inputs=max_pool_00, filters=NUM_CHANNELS*2*3, kernel_size=2, strides=1, 
                              padding='same', activation = tf.nn.relu)
-    max_pool_1 = tf.layers.max_pooling1d(inputs=conv1, pool_size=2, strides=2, padding='same')
+    max_pool_1 = tf.layers.max_pooling1d(inputs=conv1, pool_size=2, strides=3, padding='same')
+
+    if DEBUG: print("After conv1, max_pool_1: ", max_pool_1.shape)
     
-    # (batch, 32, 130) --> (batch, 16, 260)
-    conv2 = tf.layers.conv1d(inputs=max_pool_1, filters=65*8, kernel_size=2, strides=1, 
+    # (batch, 123, 108) --> (batch, 41, 324)
+    conv2 = tf.layers.conv1d(inputs=max_pool_1, filters=NUM_CHANNELS*2*3*3, kernel_size=2, strides=1, 
                              padding='same', activation = tf.nn.relu)
-    max_pool_2 = tf.layers.max_pooling1d(inputs=conv2, pool_size=2, strides=2, padding='same')
+    max_pool_2 = tf.layers.max_pooling1d(inputs=conv2, pool_size=2, strides=3, padding='same')
+
+    if DEBUG: print("After conv2, max_pool_2: ", max_pool_2.shape)
     
     # (batch, 16, 260) --> (batch, 8, 520)
     #conv3 = tf.layers.conv1d(inputs=conv2, filters=65*16, kernel_size=2, strides=1, 
@@ -92,7 +100,7 @@ with graph.as_default():
 
 with graph.as_default():
     # Flatten and add dropout
-    flat = tf.reshape(max_pool_2, (-1, 15*65*8))
+    flat = tf.reshape(max_pool_2, (-1, 41*324))
     flat = tf.nn.dropout(flat, keep_prob=keep_prob_)
     
     # Predictions
