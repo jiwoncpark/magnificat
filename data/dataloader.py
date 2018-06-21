@@ -17,7 +17,7 @@ class Dataloader(object):
     """
     
     def __init__(self, lens_source_path, nonlens_source_path, 
-                 onehot_filters=False, observation_cutoff=np.inf, debug=False):
+                 onehot_filters=False, lightcurve_only=False, observation_cutoff=np.inf, debug=False):
         self.lens_source_path = lens_source_path
         self.nonlens_source_path = nonlens_source_path
         self.lens = pd.read_csv(lens_source_path)
@@ -28,8 +28,12 @@ class Dataloader(object):
         self.NUM_FILTERS = 5
         self.seed = 123
         
-        self.attributes = ['psf_fwhm', 'x', 'y', 'apFlux', 'apFluxErr', 
-                           'apMag', 'apMagErr', 'trace', 'e1', 'e2', 'e', 'phi', 'd_time']
+        self.lightcurve_only = lightcurve_only
+        if self.lightcurve_only:
+            self.attributes = ['apMag', 'apMagErr', 'd_time', ]
+        else:
+            self.attributes = ['psf_fwhm', 'x', 'y', 'apFlux', 'apFluxErr', 
+                               'apMag', 'apMagErr', 'trace', 'e1', 'e2', 'e', 'phi', 'd_time']
         self.NUM_ATTRIBUTES = len(self.attributes)
         
         self.filtered_attributes = [f + '_' + a for a, f in list(product(self.attributes, 'ugriz'))]
@@ -86,7 +90,11 @@ class Dataloader(object):
             src['d_time'].fillna(0.0, inplace=True)
             src['d_time'] = np.clip(src['d_time'], a_min=0.0, a_max=None)
             src.drop(['MJD', 'ccdVisitId'], axis=1, inplace=True)
+            
         gc.collect()
+        
+        if self.DEBUG:
+            print("After set balance: ", lens.shape)
         
         return lens, nonlens
     
@@ -98,6 +106,8 @@ class Dataloader(object):
         Refer to comments for more detail.
         """
         
+        src = src[self.attributes + ['time_index', 'objectId', 'filter', ]]
+        
         if self.DEBUG:
             print("NUM_TIMES: ", self.NUM_TIMES)
             print(src.shape[0])
@@ -108,6 +118,8 @@ class Dataloader(object):
             src = pd.get_dummies(data=src, prefix='', prefix_sep='', columns=['filter'])
             #src.reset_index(inplace=True)
             gc.collect()
+            if self.DEBUG:
+                print("1 src shape:", src.shape)
             assert np.array_equal(src.shape, 
                                   (self.NUM_POSITIVES*self.NUM_TIMES,
                                    self.NUM_ATTRIBUTES + self.NUM_FILTERS + 2))

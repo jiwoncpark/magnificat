@@ -100,7 +100,7 @@ with graph.as_default():
 
 with graph.as_default():
     # Flatten and add dropout
-    flat = tf.reshape(max_pool_2, (-1, 41*324))
+    flat = tf.reshape(max_pool_2, (-1, 41*NUM_CHANNELS*2*3*3))
     flat = tf.nn.dropout(flat, keep_prob=keep_prob_)
     
     # Predictions
