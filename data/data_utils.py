@@ -6,8 +6,9 @@ import numpy as np
 
 def fetch_batches(arr1, arr2, batch_size=200):
     num_examples = arr1.shape[0]
-    batches1 =  [arr1[i*batch_size: (i + 1)*batch_size] for i in range(num_examples/batch_size + 1)]
-    batches2 =  [arr2[i*batch_size: (i + 1)*batch_size] for i in range(num_examples/batch_size + 1)]
+    num_batches = int(num_examples/batch_size) + 1
+    batches1 =  [arr1[i*batch_size: (i + 1)*batch_size] for i in range(num_batches)]
+    batches2 =  [arr2[i*batch_size: (i + 1)*batch_size] for i in range(num_batches)]
     batches = list(zip(batches1, batches2))
     return batches
 

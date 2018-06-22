@@ -7,12 +7,13 @@ import numpy as np
 import pandas as pd
 import gc
 import os, sys
-from sklearn.model_selection import train_test_split
+#from sklearn.model_selection import train_test_split
 data_path = os.path.join(os.environ['DEEPQSODIR'], 'data')
 sys.path.insert(0, data_path)
 from data_utils import *
 import tensorflow as tf
 import time
+from sklearn.model_selection import KFold
 
 features_path = os.path.join(data_path, 'features.npy')
 label_path = os.path.join(data_path, 'labels.npy')
@@ -22,7 +23,7 @@ DEBUG = True
 # Training hyperparameters
 BATCH_SIZE = 500
 LEARNING_RATE = 1.e-2
-NUM_EPOCHS = 1200
+NUM_EPOCHS = 10
 KEEP_PROB = 1.0
 NUM_CLASSES = 2
 
@@ -35,14 +36,13 @@ y = np.load(label_path).reshape(-1).astype(int)
 
 NUM_OBJECTS, NUM_TIMES, NUM_CHANNELS = X.shape
 
-X_train, X_val, y_train, y_val = train_test_split(X, y, train_size=0.9, stratify=y, random_state=123)
 
-y_train = to_onehot(y_train, num_classes=NUM_CLASSES)
-y_val = to_onehot(y_val, num_classes=NUM_CLASSES)
+#X_train, X_val, y_train, y_val = train_test_split(X, y, train_size=0.9, stratify=y, random_state=123)
+kf = KFold(n_splits=5, shuffle=True, random_state=123)
+
+y = to_onehot(y, num_classes=NUM_CLASSES)
+print(y.shape)
 end_data = time.time()
-
-NUM_TRAIN = X_train.shape[0]
-NUM_VAL = X_val.shape[0]
 
 print("Finished reading in data... in %0.2f seconds" %(end_data - start_data))
 
@@ -117,81 +117,66 @@ with graph.as_default():
 if (os.path.exists('checkpoints-cnn') == False):
     os.makedirs('checkpoints-cnn')
 
-validation_acc = []
-validation_loss = []
-
-train_acc = []
-train_loss = []
-
 with graph.as_default():
     saver = tf.train.Saver()
 
+train_acc, train_loss = [], []
 print("Began training:")
 with tf.Session(graph=graph) as sess:
     sess.run(tf.global_variables_initializer())
     iteration = 1
-   
     # Loop over epochs
     for e in range(NUM_EPOCHS):
-        
-        p = np.random.permutation(NUM_TRAIN)
-        X_train = X_train[p, :, :]
-        y_train = y_train[p, ]
-        batches = fetch_batches(X_train, y_train, batch_size=BATCH_SIZE)
+        cv_valacc, cv_valloss = [], []
+        for train_index, val_index in kf.split(X):
+            #print("Num_train: {}, num_val: {}".format(len(train_index), len(val_index)))
+            X_train, X_val = X[train_index], X[val_index]
+            y_train, y_val = y[train_index], y[val_index]            
+            if (e % 50 == 0) and (e != 0):
+                LEARNING_RATE /= (1.0 + e*0.0005)
+                
+            # Loop over batches
+            for x_t, y_t in fetch_batches(X_train, y_train, batch_size=BATCH_SIZE):
+                # Feed dictionary
+                feed = {inputs_ : x_t,
+                        labels_ : y_t, 
+                        keep_prob_ : KEEP_PROB, 
+                        learning_rate_ : LEARNING_RATE}
+                # Loss
+                loss, _ , acc = sess.run([cost, optimizer, accuracy], 
+                                         feed_dict = feed)
+                train_acc.append(acc)
+                train_loss.append(loss)
 
-        #print("learning rate: %0.7f" %LEARNING_RATE)
+                # Print at each 10 iters
+                if (iteration % 10 == 0):
+                    print("Epoch: {}/{}".format(e, NUM_EPOCHS),
+                          "Iteration: {:d}".format(iteration),
+                          "Train loss: {:6f}".format(loss),
+                          "Train acc: {:.6f}".format(acc))
+                iteration += 1
+            #print("First train CV is done at iteration {}".format(iteration))
 
-        if (e % 50 == 0) and (e != 0):
-            LEARNING_RATE /= (1.0 + e*0.0005)
-        
-        # Loop over batches
-        for x, y in batches:
-            
-            # Feed dictionary
-            feed = {inputs_ : x,
-                    labels_ : y, 
-                    keep_prob_ : KEEP_PROB, 
-                    learning_rate_ : LEARNING_RATE}
-            
-            # Loss
-            loss, _ , acc = sess.run([cost, optimizer, accuracy], 
-                                     feed_dict = feed)
-            train_acc.append(acc)
-            train_loss.append(loss)
-            
-            # Print at each 5 iters
-            if (iteration % 10 == 0):
-                print("Epoch: {}/{}".format(e, NUM_EPOCHS),
-                      "Iteration: {:d}".format(iteration),
-                      "Train loss: {:6f}".format(loss),
-                      "Train acc: {:.6f}".format(acc))
-            
-            # Compute validation loss at every 10 iterations
-            if (iteration % 100 == 0):                
-                val_acc_ = []
-                val_loss_ = []
-                
-                for x_v, y_v in fetch_batches(X_val, y_val, 300):
-                    # Feed
-                    feed = {inputs_ : x_v, labels_ : y_v, keep_prob_ : 1.0}  
-                    
-                    # Loss
-                    loss_v, acc_v = sess.run([cost, accuracy], feed_dict = feed)                    
-                    val_acc_.append(acc_v)
-                    val_loss_.append(loss_v)
-                
-                # Print info
-                print("Epoch: {}/{}".format(e, NUM_EPOCHS),
-                      "Learning rate: {:.6f}".format(LEARNING_RATE),
-                      "Iteration: {:d}".format(iteration),
-                      "Validation loss: {:6f}".format(np.mean(val_loss_)),
-                      "Validation acc: {:.6f}".format(np.mean(val_acc_)))
-                
-                # Store
-                validation_acc.append(np.mean(val_acc_))
-                validation_loss.append(np.mean(val_loss_))
-            
-            # Iterate 
-            iteration += 1
-    
+            # Compute validation loss at the end of every CV epoch
+            val_acc_ = []
+            val_loss_ = []
+
+            for x_v, y_v in fetch_batches(X_val, y_val, BATCH_SIZE):
+                feed = {inputs_ : x_v, labels_ : y_v, keep_prob_ : 1.0}  
+                loss_v, acc_v = sess.run([cost, accuracy], feed_dict = feed)                    
+                val_acc_.append(acc_v)
+                val_loss_.append(loss_v)
+
+            print("Epoch: {}/{}".format(e, NUM_EPOCHS),
+                  "Learning rate: {:.6f}".format(LEARNING_RATE),
+                  "Iteration: {:d}".format(iteration),
+                  "Validation loss: {:6f}".format(np.mean(val_loss_)),
+                  "Validation acc: {:.6f}".format(np.mean(val_acc_)))
+            # Store
+            cv_valacc.append(np.mean(val_acc_))
+            cv_valloss.append(np.mean(val_loss_))
+        print('CV mean accuracy: {:.6}, CV std: {:.6}'.format(np.mean(cv_valacc), np.std(cv_valacc)))
+        print('CV mean loss: {:.6}'.format(np.mean(cv_valloss)))
+
+
     saver.save(sess,"checkpoints-cnn/catalog.ckpt")
