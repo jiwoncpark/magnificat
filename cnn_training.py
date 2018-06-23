@@ -83,21 +83,6 @@ with graph.as_default():
 
     if DEBUG: print("After conv2, max_pool_2: ", max_pool_2.shape)
     
-    # (batch, 16, 260) --> (batch, 8, 520)
-    #conv3 = tf.layers.conv1d(inputs=conv2, filters=65*16, kernel_size=2, strides=1, 
-    #                         padding='same', activation = tf.nn.relu)
-    #max_pool_3 = tf.layers.max_pooling1d(inputs=conv3, pool_size=2, strides=2, padding='same')
-    
-    # (batch, 8, 520) --> (batch, 4, 1040)
-    #conv4 = tf.layers.conv1d(inputs=conv3, filters=960, kernel_size=2, strides=2, 
-    #                         padding='same', activation = tf.nn.relu)
-    #max_pool_4 = tf.layers.max_pooling1d(inputs=conv4, pool_size=2, strides=2, padding='same')
-
-    # (batch, 8, 520) --> (batch, 4, 1040)
-    #conv5 = tf.layers.conv1d(inputs=conv4, filters=1920, kernel_size=2, strides=2, 
-    #                         padding='same', activation = tf.nn.relu)
-    #max_pool_5 = tf.layers.max_pooling1d(inputs=conv5, pool_size=2, strides=2, padding='same')
-
 with graph.as_default():
     # Flatten and add dropout
     flat = tf.reshape(max_pool_2, (-1, 41*NUM_CHANNELS*2*3*3))
@@ -129,7 +114,6 @@ with tf.Session(graph=graph) as sess:
     for e in range(NUM_EPOCHS):
         cv_valacc, cv_valloss = [], []
         for train_index, val_index in kf.split(X):
-            #print("Num_train: {}, num_val: {}".format(len(train_index), len(val_index)))
             X_train, X_val = X[train_index], X[val_index]
             y_train, y_val = y[train_index], y[val_index]            
             if (e % 50 == 0) and (e != 0):
@@ -155,7 +139,6 @@ with tf.Session(graph=graph) as sess:
                           "Train loss: {:6f}".format(loss),
                           "Train acc: {:.6f}".format(acc))
                 iteration += 1
-            #print("First train CV is done at iteration {}".format(iteration))
 
             # Compute validation loss at the end of every CV epoch
             val_acc_ = []
