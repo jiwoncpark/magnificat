@@ -1,7 +1,7 @@
 # Base framework provided by
 # https://github.com/bnaul/IrregularTimeSeriesAutoencoderPaper
 
-from keras.layers import (Input, Dense, LSTM, Dropout,
+from keras.layers import (Dense, LSTM, Dropout,
                           Flatten, RepeatVector, Bidirectional, TimeDistributed)
 from keras.layers.merge import concatenate
 from keras.models import Model
@@ -48,7 +48,7 @@ class Autoencoder(object):
         decoded = TimeDistributed(Dense(units=1,
                                         activation='linear'),
                                   name='time_dist')(decoded)
-        return decoded           
+        return decoded     
     
     def autoencode(self, model_input):
         encoded = self.encode(model_input=model_input)
@@ -58,8 +58,9 @@ class Autoencoder(object):
         return autoencoded
     
 if __name__== '__main__':
+    from keras.layers import Input
     autoencoder = Autoencoder()
-    model_input = Input(shape=(738, 2), name='main_input')
+    model_input = Input(shape=(738, 7), name='main_input')
     model = autoencoder.autoencode(model_input)
     print(model.summary())
     

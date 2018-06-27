@@ -12,7 +12,7 @@ class Dataloader(object):
     
     """
     Class equipped with functions for generating the 
-    datasets to be fed into the DNN from the input
+    DNN training data from the input
     source tables.
     """
     
