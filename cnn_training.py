@@ -27,24 +27,21 @@ NUM_EPOCHS = 10
 KEEP_PROB = 1.0
 NUM_CLASSES = 2
 
-start_data = time.time()
+#start_data = time.time()
 
 #X = np.loadtxt(features_path, delimiter=',').reshape(NUM_OBJECTS, NUM_TIMES, NUM_CHANNELS)
 #y = np.loadtxt(label_path, delimiter=',').astype(int)
 X = np.load(features_path)
 y = np.load(label_path).reshape(-1).astype(int)
 
-NUM_OBJECTS, NUM_TIMES, NUM_CHANNELS = X.shape
-
-
 #X_train, X_val, y_train, y_val = train_test_split(X, y, train_size=0.9, stratify=y, random_state=123)
 kf = KFold(n_splits=5, shuffle=True, random_state=123)
 
 y = to_onehot(y, num_classes=NUM_CLASSES)
 print(y.shape)
-end_data = time.time()
+#end_data = time.time()
 
-print("Finished reading in data... in %0.2f seconds" %(end_data - start_data))
+#print("Finished reading in data... in %0.2f seconds" %(end_data - start_data))
 
 graph = tf.Graph()
 

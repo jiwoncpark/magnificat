@@ -5,8 +5,7 @@
 *.npy
 
 # Jupyter notebook
-.ipynb_checkpoints
-*.ipynb
+*/ipynb_checkpoints
 .DS_Store
 */practice_notebook.ipynb
 
