@@ -1,22 +1,9 @@
 import math
 import numpy as np
 import healpy as hp
-import sqlite3
-import pandas as pd
 
 __all__ = ['get_pointings', 'upgrade_healpix', 'get_healpix_centers']
 __all__ += ['get_target_nside']
-
-
-def load_opsim_db(db_path):
-    # Create your connection.
-    cnx = sqlite3.connect(db_path)
-    obs_hist = pd.read_sql_query("SELECT * FROM ObsHistory", cnx)
-    cols = ['observationStartMJD', 'observationId', 'numExposures', 'filter']
-    cols += ['seeingFwhmGeom', 'seeingFwhmEff', 'seeingFwhm500']
-    cols += ['fiveSigmaDepth', 'skyBrightness', 'ra', 'dec']
-    obs_hist = obs_hist[cols]
-    return obs_hist
 
 
 def get_pointings(n_pointings, healpix_in, nside_in, seed):

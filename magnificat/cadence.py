@@ -20,7 +20,7 @@ class LSSTCadence:
         self.seed = seed
         cols = ['expMJD', 'visitExpTime', 'obsHistID']
         cols += ['descDitheredRA', 'descDitheredDec', 'fiveSigmaDepth']
-        cols += ['filtSkyBrightness', 'vSkyBright']
+        cols += ['filtSkyBrightness']
         cols += ['filter', 'FWHMgeom', 'FWHMeff']
         self.cols = cols
         import magnificat.input_data as in_data
@@ -90,6 +90,14 @@ class LSSTCadence:
             obs_info_i = obs_info_i.append(opsim[opsim['dist'] < self.fov_radius],
                                            ignore_index=True)
             obs_info_i.to_csv(osp.join(self.out_dir, f'obs_{i}.csv'), index=None)
+            shifted_mjd = (obs_info_i['expMJD'].values - self.min_mjd)
+            np.save(osp.join(self.out_dir, f'mjd_{i}.npy'), shifted_mjd)
+
+    def get_mjd_single_pointing(self, i: int, rounded: bool):
+        mjd = np.load(osp.join(self.out_dir, f'mjd_{i}.npy'))
+        if rounded:
+            mjd = np.round(mjd)
+        return mjd
 
     def load_opsim_db(self):
         """Load the OpSim database with relevant columns as an iterator
