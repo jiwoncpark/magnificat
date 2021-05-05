@@ -1,9 +1,8 @@
 import numpy as np
-from sklearn.utils import check_random_state
 import torch
 
 
-def get_drw(t_rest, tau, z, SF_inf, xmean=0, random_state=None):
+def get_drw(t_rest, tau, z, SF_inf, xmean=0, rng=None):
     """Generate a damped random walk light curve
     This uses a damped random walk model to generate a light curve similar
     to that of a QSO [1]_.
@@ -22,7 +21,7 @@ def get_drw(t_rest, tau, z, SF_inf, xmean=0, random_state=None):
         mean value of random walk; default=0
     SF_inf : float (optional
         Structure function at infinity; default=0.3
-    random_state : None, int, or np.random.RandomState instance (optional)
+    random_state : Generator instance
         random seed or random number generator
 
     Returns
@@ -49,7 +48,6 @@ def get_drw(t_rest, tau, z, SF_inf, xmean=0, random_state=None):
     """
     #  Xmean = b * tau
     #  SFinf = sigma * sqrt(tau / 2)
-    rng = check_random_state(random_state)
     N = len(t_rest)
 
     tau_obs = tau*(z+1)

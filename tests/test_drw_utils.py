@@ -1,11 +1,10 @@
 import unittest
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.utils import check_random_state
 import magnificat.drw_utils as drw_utils
 
 
-def get_drw_dc2(t_obs, tau, z, SF_inf, random_state):
+def get_drw_dc2(t_obs, tau, z, SF_inf, rng):
     """
     Return the delta mag_norm values wrt the infinite-time average
     mag_norm for the provided AGN light curve parameters.  mag_norm is
@@ -48,7 +47,6 @@ def get_drw_dc2(t_obs, tau, z, SF_inf, random_state):
     # t_obs = np.arange(agn_walk_start_date, max(mjds + 1), dtype=float)
     t_rest = t_obs/(1.0 + z)/tau
 
-    rng = check_random_state(random_state)
     N = len(t_rest)
     steps = rng.normal(0, 1, N)
     delta_mag_norm = np.zeros(N)
@@ -81,12 +79,12 @@ class TestDRWUtils(unittest.TestCase):
         drw_utils.dc2 = get_drw_dc2(t_obs,
                                     tau=tau_rest, SF_inf=SF_inf,
                                     z=self.z,
-                                    random_state=self.seed)
+                                    rng=np.random.default_rng(self.seed))
         # magnify accepts rest-frame tau and t_rest
         drw_utils.magnify = drw_utils.get_drw(t_rest,
                                               tau=tau_rest, SF_inf=SF_inf,
                                               z=self.z, xmean=0.0,
-                                              random_state=self.seed)
+                                              rng=np.random.default_rng(self.seed))
 
         plt.scatter(t_rest, drw_utils.dc2, marker='.', label='DC2')
         plt.scatter(t_rest, drw_utils.magnify, marker='.', label='magnify')
