@@ -47,14 +47,13 @@ class DRWDataset(Dataset):
         self.err_y = err_y
         self.n_points = len(torch.arange(0, self.max_x+self.delta_x, self.delta_x))
         self.x = np.arange(0, self.max_x+self.delta_x, self.delta_x)
+        self.x += self.shift_x
         self.x *= self.rescale_x
         # Fixed attributes
         self.min_max = (-1, 1)
         self.x_dim = 1
         self.y_dim = 1
 
-        # Sample params [num_samples, 3]
-        self.params = self.SF_inf_tau_mean_z_sampler.sample(self.num_samples)
         self._generate_light_curves()
 
     def _generate_light_curves(self):
@@ -67,7 +66,7 @@ class DRWDataset(Dataset):
             else:
                 # rng = default_rng(int(str(self.seed) + str(index)))
                 torch.manual_seed(int(str(self.seed) + str(index)))
-                SF_inf, tau, mean, z = self.params[index]
+                SF_inf, tau, mean, z = self.SF_inf_tau_mean_z_sampler.sample(1)[0]
                 # Shifted rest-frame times
                 t_obs = torch.arange(0, self.max_x+self.delta_x, self.delta_x)
                 t_rest = t_obs/(1.0 + z)
@@ -95,6 +94,9 @@ class DRWDataset(Dataset):
         return x, y
 
     def get_samples(self, n_samples, test_min_max, n_points):
+        """Alternative item getter for NPF code
+
+        """
         data_loader = DataLoader(self,
                                  batch_size=n_samples, shuffle=True)
         for b in data_loader:
