@@ -50,9 +50,10 @@ def get_drw(t_rest, tau, z, SF_inf, xmean=0, rng=None):
     #  SFinf = sigma * sqrt(tau / 2)
     N = len(t_rest)
 
-    tau_obs = tau*(z+1)
-    t_obs = t_rest*(z+1)
-    t = t_obs / tau_obs  # tau-adjusted times
+    # tau_obs = tau*(z+1)
+    # t_obs = t_rest*(z+1)
+    # t = t_obs / tau_obs  # tau-adjusted times
+    t = t_rest / tau  # tau-adjusted times
 
     x = np.zeros(N)
     E = rng.normal(0, 1, N)

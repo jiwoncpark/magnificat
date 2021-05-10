@@ -53,7 +53,7 @@ class DRWDataset(Dataset):
         self.min_max = (-1, 1)
         self.x_dim = 1
         self.y_dim = 1
-
+        # For standardizing params
         self._generate_light_curves()
 
     def _generate_light_curves(self):
@@ -66,7 +66,8 @@ class DRWDataset(Dataset):
             else:
                 # rng = default_rng(int(str(self.seed) + str(index)))
                 torch.manual_seed(int(str(self.seed) + str(index)))
-                SF_inf, tau, mean, z = self.SF_inf_tau_mean_z_sampler.sample(1)[0]
+                params = self.SF_inf_tau_mean_z_sampler.sample(1)[0]
+                SF_inf, tau, mean, z = params
                 # Shifted rest-frame times
                 t_obs = torch.arange(0, self.max_x+self.delta_x, self.delta_x)
                 t_rest = t_obs/(1.0 + z)
@@ -77,11 +78,13 @@ class DRWDataset(Dataset):
                 y = y.unsqueeze(1)  # [n_points, 1]
                 # x = x[..., np.newaxis]  # [n_points, 1]
                 # y = y[..., np.newaxis]  # [n_points, 1]
-                torch.save((x, y), osp.join(self.out_dir, f'drw_{index}.pt'))
+                params = torch.from_numpy(params)
+                torch.save((x, y, params),
+                           osp.join(self.out_dir, f'drw_{index}.pt'))
 
     def __getitem__(self, index):
         # Load fully observed light curve
-        x, y = torch.load(osp.join(self.out_dir, f'drw_{index}.pt'))
+        x, y, params = torch.load(osp.join(self.out_dir, f'drw_{index}.pt'))
         # x = torch.from_numpy(x).unsqueeze(1)
         # y = torch.from_numpy(y).unsqueeze(1)
         # y = np.interp(x, t_obs_full, y_full)
@@ -90,17 +93,11 @@ class DRWDataset(Dataset):
         x *= self.rescale_x
         # Add noise and rescale flux to [-1, 1]
         y += torch.randn_like(y)*0.01
-        y = (y - torch.min(y))/(torch.max(y) - torch.min(y))*2.0 - 1.0
-        return x, y
-
-    def get_samples(self, n_samples, test_min_max, n_points):
-        """Alternative item getter for NPF code
-
-        """
-        data_loader = DataLoader(self,
-                                 batch_size=n_samples, shuffle=True)
-        for b in data_loader:
-            return b
+        # y = (y - torch.min(y))/(torch.max(y) - torch.min(y))*2.0 - 1.0
+        # Standardize params
+        params = params[self.slice_params]
+        params = (params - self.mean_params)/self.std_params
+        return x, y, params
 
     def __len__(self):
         return self.num_samples
