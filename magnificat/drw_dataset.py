@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from magnificat import drw_utils, cadence
+from magnificat import drw_utils
 
 
 class DRWDataset(Dataset):
@@ -28,7 +28,7 @@ class DRWDataset(Dataset):
     bp_to_int = dict(zip(list('ugrizy'), range(6)))
 
     def __init__(self,
-                 SF_inf_tau_mean_z_samplers,
+                 SF_inf_tau_mean_z_sampler,
                  out_dir,
                  num_samples,
                  rescale_x=0.001,
@@ -37,8 +37,10 @@ class DRWDataset(Dataset):
                  max_x=3650.0,
                  err_y=0.01,
                  seed=123):
-        self.SF_inf_tau_mean_z_samplers = SF_inf_tau_mean_z_samplers
-        self.bandpasses = list(self.SF_inf_tau_mean_z_samplers.keys())
+        self.SF_inf_tau_mean_z_sampler = SF_inf_tau_mean_z_sampler
+        # Figure out how many bandpasses are sampled
+        sample = self.SF_inf_tau_mean_z_sampler.sample(1)
+        self.bandpasses = list(sample.keys())
         self.bandpasses_int = [self.bp_to_int[bp] for bp in self.bandpasses]
         self.bandpasses_int.sort()
         self.out_dir = out_dir
@@ -59,7 +61,11 @@ class DRWDataset(Dataset):
         self.x_dim = 1
         self.y_dim = 1
         # For standardizing params
+        self.mean_params = None
+        self.std_params = None
+        self.slice_params = None
         self._generate_light_curves_multi_filter()
+        self.get_normalizing_metadata()
 
     def _generate_light_curves_multi_filter(self):
         """Generate and store fully observed DRW light curves
@@ -75,8 +81,9 @@ class DRWDataset(Dataset):
 
     def _generate_light_curves(self, index, bandpass):
         # rng = default_rng(int(str(self.seed) + str(index)))
+        bp_int = self.bp_to_int[bandpass]
         torch.manual_seed(int(str(self.seed) + str(index)))
-        params = self.SF_inf_tau_mean_z_samplers[bandpass].sample(1)[0]
+        params = self.SF_inf_tau_mean_z_sampler.sample(1)[bandpass][0]
         SF_inf, tau, mean, z = params
         # Shifted rest-frame times
         t_obs = torch.arange(0, self.max_x+self.delta_x, self.delta_x)
@@ -89,7 +96,6 @@ class DRWDataset(Dataset):
         # x = x[..., np.newaxis]  # [n_points, 1]
         # y = y[..., np.newaxis]  # [n_points, 1]
         params = torch.from_numpy(params).unsqueeze(1)  # [n_params, 1]
-        bp_int = self.bp_to_int[bandpass]
         torch.save((x, y, params),
                    osp.join(self.out_dir, f'drw_{bp_int}_{index}.pt'))
 
@@ -117,9 +123,25 @@ class DRWDataset(Dataset):
         y += torch.randn_like(y)*0.01
         # y = (y - torch.min(y))/(torch.max(y) - torch.min(y))*2.0 - 1.0
         # Standardize params
-        params = params[self.slice_params, :]
-        params = (params - self.mean_params)/self.std_params
+        if self.slice_params is not None:
+            params = params[self.slice_params, :]
+        if self.mean_params is not None:
+            params -= self.mean_params[self.slice_params, :]
+            params /= self.std_params[self.slice_params, :]
         return x, y, params
+
+    def get_normalizing_metadata(self):
+        loader = DataLoader(self,
+                            batch_size=100,
+                            shuffle=False,
+                            drop_last=False)
+        mean_params = torch.zeros([4, len(self.bandpasses)])
+        std_params = torch.zeros([4, len(self.bandpasses)])
+        for i, (_, _, params) in enumerate(loader):
+            mean_params += (torch.mean(params, dim=0) - mean_params)/(i+1)
+            std_params += (torch.std(params, dim=0) - std_params)/(i+1)
+        self.mean_params = mean_params
+        self.std_params = std_params
 
     def __len__(self):
         return self.num_samples
@@ -134,24 +156,24 @@ if __name__ == '__main__':
             np.random.seed(seed)
 
         def sample(self, N):
-            SF_inf = np.maximum(np.random.randn(N)*0.05 + 0.2, 0.2)
-            # SF_inf = 10**(np.random.randn(N)*(0.25) + -0.8)
-            # SF_inf = np.ones(N)*0.15
-            # tau = 10.0**np.maximum(np.random.randn(N)*0.5 + 2.0, 0.1)
-            tau = np.maximum(np.random.randn(N)*50.0 + 200.0, 10.0)
-            # mag = np.maximum(np.random.randn(N) + 19.0, 17.5)
-            mag = np.zeros(N)
-            # z = np.maximum(np.random.randn(N) + 2.0, 0.5)
-            z = np.ones(N)*2.0
-            return np.stack([SF_inf, tau, mag, z], axis=-1)
+            sample = dict()
+            for bp in list('ugrizy'):
+                SF_inf = np.maximum(np.random.randn(N)*0.05 + 0.2, 0.2)
+                # SF_inf = 10**(np.random.randn(N)*(0.25) + -0.8)
+                # SF_inf = np.ones(N)*0.15
+                # tau = 10.0**np.maximum(np.random.randn(N)*0.5 + 2.0, 0.1)
+                tau = np.maximum(np.random.randn(N)*50.0 + 200.0, 10.0)
+                # mag = np.maximum(np.random.randn(N) + 19.0, 17.5)
+                mag = np.zeros(N)
+                # z = np.maximum(np.random.randn(N) + 2.0, 0.5)
+                z = np.ones(N)*2.0
+                sample[bp] = np.stack([SF_inf, tau, mag, z], axis=-1)  # [N, 4]
+            return sample
 
     train_seed = 123
-    samplers = dict(g=Sampler(train_seed),
-                    r=Sampler(train_seed),
-                    i=Sampler(train_seed))
+    sampler = Sampler(train_seed)
 
-
-    train_dataset = DRWDataset(samplers, 'train_drw',
+    train_dataset = DRWDataset(sampler, 'train_drw',
                                num_samples=10,
                                seed=train_seed,
                                shift_x=-3650*0.5,
@@ -160,8 +182,7 @@ if __name__ == '__main__':
                                max_x=3650.0,
                                err_y=0.01)
     train_dataset.slice_params = [0, 1]
-    train_dataset.mean_params = torch.tensor([0.0, 0.0]).reshape(-1, 1)
-    train_dataset.std_params = torch.tensor([1.0, 1.0]).reshape(-1, 1)
+    print(train_dataset.mean_params, train_dataset.std_params)
     x, y, params = train_dataset[0]
     print(x.shape, y.shape, params.shape)
 
