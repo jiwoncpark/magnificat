@@ -9,10 +9,12 @@ import magnificat.observation_utils as obs_utils
 
 
 class LSSTCadence:
-    min_mjd = 59853.01679398148
+    min_mjd = 59580.139555
     nside_in = 32
     nested = False
     fov_radius = 1.75  # deg, field of view
+    bp_to_int = dict(zip(list('ugrizy'), range(6)))
+    bp = list('ugrizy')
 
     def __init__(self, out_dir, seed: int = 1234):
         self.out_dir = out_dir
@@ -90,14 +92,27 @@ class LSSTCadence:
             obs_info_i = obs_info_i.append(opsim[opsim['dist'] < self.fov_radius],
                                            ignore_index=True)
             obs_info_i.to_csv(osp.join(self.out_dir, f'obs_{i}.csv'), index=None)
-            shifted_mjd = (obs_info_i['expMJD'].values - self.min_mjd)
-            np.save(osp.join(self.out_dir, f'mjd_{i}.npy'), shifted_mjd)
+            # Get filter assignment in int, for convenience
+            filters = obs_info_i['filter'].values
+            filters = np.array(list(map(self.bp_to_int.get, filters)))
+            # Store MJD
+            mjd = (obs_info_i['expMJD'].values - self.min_mjd)
+            np.save(osp.join(self.out_dir, f'mjd_{i}.npy'), mjd)
+            # Store observation mask, 1 where observed in filter else 0
+            mask = np.zeros([len(mjd), 6])  # [n_obs, 6]
+            for bp_i in range(6):
+                mask[:, bp_i] = (filters == bp_i).astype(int)
+            np.save(osp.join(self.out_dir, f'mask_{i}.npy'), mask)
 
     def get_mjd_single_pointing(self, i: int, rounded: bool):
         mjd = np.load(osp.join(self.out_dir, f'mjd_{i}.npy'))
         if rounded:
             mjd = np.round(mjd)
         return mjd
+
+    def get_mask_single_pointing(self, i: int):
+        mask = np.load(osp.join(self.out_dir, f'mask_{i}.npy')).astype(int)
+        return mask
 
     def load_opsim_db(self):
         """Load the OpSim database with relevant columns as an iterator
@@ -108,11 +123,17 @@ class LSSTCadence:
                                con)
         db['ra'] = np.rad2deg(db['descDitheredRA'].values)
         db['dec'] = np.rad2deg(db['descDitheredDec'].values)
+        # print("min MJD: ", db['expMJD'].min())
         return db
 
 
 if __name__ == '__main__':
     cadence_obj = LSSTCadence('obs', 1234)
-    ra, dec = cadence_obj.get_pointings(100)
-    print(ra.shape)
+    ra, dec = cadence_obj.get_pointings(10)
     cadence_obj.get_obs_info(ra, dec)
+    mjd = cadence_obj.get_mjd_single_pointing(0, rounded=False)
+    print("mjd: ", mjd.shape, mjd)
+    mask = cadence_obj.get_mask_single_pointing(0)
+    print("mask: ", mask.shape, mask)
+    print(ra.shape)
+
