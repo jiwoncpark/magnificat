@@ -159,7 +159,7 @@ if __name__ == '__main__':
         def __init__(self, seed, bandpasses):
             random.seed(seed)
             np.random.seed(seed)
-            self.bandpasses = list('ugrizy')
+            self.bandpasses = bandpasses
 
         def sample(self):
             sample_dict = dict()
@@ -181,7 +181,7 @@ if __name__ == '__main__':
             return sample_dict
 
     train_seed = 123
-    sampler = Sampler(train_seed, bandpasses=list('ugrizy'))
+    sampler = Sampler(train_seed, bandpasses=['i'])
 
     train_dataset = DRWDataset(sampler, 'train_drw',
                                num_samples=3,
