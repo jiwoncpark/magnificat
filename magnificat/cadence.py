@@ -14,6 +14,7 @@ class LSSTCadence:
     nested = False
     fov_radius = 1.75  # deg, field of view
     bp_to_int = dict(zip(list('ugrizy'), range(6)))
+    int_to_bp = dict(zip(range(6), list('ugrizy')))
     bp = list('ugrizy')
 
     def __init__(self, out_dir, seed: int = 1234):
@@ -31,6 +32,11 @@ class LSSTCadence:
         with open(osp.join(self.in_data, 'healpix_list_dc2.txt'), 'r') as f:
             hp_list = [int(line.rstrip()) for line in f.readlines()]
         self.hp_list = hp_list
+
+    def set_bandpasses(self, bandpasses):
+        self.bandpasses_int = [self.bp_to_int[bp] for bp in bandpasses]
+        self.bandpasses_int.sort()
+        self.bandpasses = [self.int_to_bp[bp_i] for bp_i in self.bandpasses_int]
 
     def get_pointings_single_hp(self, hp: int, n_pointings: int):
         """
@@ -54,7 +60,7 @@ class LSSTCadence:
         hp_ids = obs_utils.upgrade_healpix(hp, self.nested,
                                            self.nside_in, nside_out)
         ra, dec = obs_utils.get_healpix_centers(hp_ids, nside_out, nest=True)
-        return ra, dec
+        return ra[:n_pointings], dec[:n_pointings]
 
     def get_pointings(self, n_pointings: int):
         """
@@ -72,17 +78,20 @@ class LSSTCadence:
 
         """
         pointings_per_hp = math.ceil(n_pointings/len(self.hp_list))
-        ra = np.empty(n_pointings)
-        dec = np.empty(n_pointings)
+        ra = np.empty(pointings_per_hp*len(self.hp_list))
+        dec = np.empty(pointings_per_hp*len(self.hp_list))
         for i, hp in enumerate(self.hp_list):
             r, d = self.get_pointings_single_hp(hp, pointings_per_hp)
             ra[i*pointings_per_hp:(i+1)*pointings_per_hp] = r
             dec[i*pointings_per_hp:(i+1)*pointings_per_hp] = d
         return ra[:n_pointings], dec[:n_pointings]
 
-    def get_obs_info(self, ra: np.ndarray, dec: np.ndarray):
+    def get_obs_info(self, ra: np.ndarray, dec: np.ndarray, skip_existing=True):
         opsim = self.load_opsim_db()
         for i, (r, d) in tqdm(enumerate(zip(ra, dec)), total=len(ra)):
+            if skip_existing:
+                if os.path.exists(osp.join(self.out_dir, f'mask_{i}.npy')):
+                    continue
             obs_info_i = pd.DataFrame()
             dist, _, _ = obs_utils.get_distance(ra_f=opsim['ra'].values,
                                                 dec_f=opsim['dec'].values,
@@ -112,6 +121,8 @@ class LSSTCadence:
 
     def get_mask_single_pointing(self, i: int):
         mask = np.load(osp.join(self.out_dir, f'mask_{i}.npy')).astype(int)
+        if self.bandpasses_int is not None:
+            mask = mask[:, self.bandpasses_int].astype(int)
         return mask
 
     def load_opsim_db(self):
@@ -131,9 +142,10 @@ if __name__ == '__main__':
     cadence_obj = LSSTCadence('obs', 1234)
     ra, dec = cadence_obj.get_pointings(10)
     cadence_obj.get_obs_info(ra, dec)
+    cadence_obj.set_bandpasses(['i', 'g'])
     mjd = cadence_obj.get_mjd_single_pointing(0, rounded=False)
-    print("mjd: ", mjd.shape, mjd)
+    print("mjd: ", mjd.shape)
     mask = cadence_obj.get_mask_single_pointing(0)
-    print("mask: ", mask.shape, mask)
+    print("mask: ", mask.shape)
     print(ra.shape)
 
