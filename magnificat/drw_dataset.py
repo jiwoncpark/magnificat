@@ -70,9 +70,9 @@ class DRWDataset(Dataset):
         # For standardizing params
         self.mean_params = None
         self.std_params = None
+        self.log_params = None
         self.slice_params = None
         self._generate_light_curves_multi_filter()
-        self.get_normalizing_metadata()
 
     def _generate_light_curves_multi_filter(self):
         """Generate and store fully observed DRW light curves
@@ -124,29 +124,32 @@ class DRWDataset(Dataset):
         x += self.shift_x
         x *= self.rescale_x
         # Add noise and rescale flux to [-1, 1]
-        y += torch.randn_like(y)*0.01
+        y += torch.randn_like(y)*self.err_y
         # y = (y - torch.min(y))/(torch.max(y) - torch.min(y))*2.0 - 1.0
         # Standardize params
         if self.slice_params is not None:
             params = params[self.slice_params]
+        if self.log_params is not None:
+            params[self.log_params] = torch.log10(params[self.log_params])
         if self.mean_params is not None:
-            params -= self.mean_params[self.slice_params]
-            params /= self.std_params[self.slice_params]
+            params -= self.mean_params
+            params /= self.std_params
         return x, y, params
 
-    def get_normalizing_metadata(self):
+    def get_normalizing_metadata(self, set_metadata=True):
         loader = DataLoader(self,
                             batch_size=100,
                             shuffle=False,
                             drop_last=False)
-        mean_params = torch.zeros([len(self.param_names)])
-        std_params = torch.zeros([len(self.param_names)])
+        mean_params = 0.0
+        std_params = 0.0
         for i, (_, _, params) in enumerate(loader):
-            print(mean_params.shape, params.shape)
             mean_params += (torch.mean(params, dim=0) - mean_params)/(i+1)
             std_params += (torch.std(params, dim=0) - std_params)/(i+1)
-        self.mean_params = mean_params
-        self.std_params = std_params
+        if set_metadata:
+            self.mean_params = mean_params
+            self.std_params = std_params
+        return mean_params, std_params
 
     def __len__(self):
         return self.num_samples
@@ -191,8 +194,9 @@ if __name__ == '__main__':
                                delta_x=1.0,
                                max_x=3650.0,
                                err_y=0.01)
-    train_dataset.slice_params = [train_dataset.param_names.index(n) for n in ['tau_i', 'SF_inf_i']]
-    print(train_dataset.slice_params)
+    train_dataset.slice_params = [train_dataset.param_names.index(n) for n in ['tau_i', 'SF_inf_i', 'M_i']]
+    train_dataset.log_params = [True, True, False]
+    train_dataset.get_normalizing_metadata()
     print(train_dataset.mean_params, train_dataset.std_params)
     x, y, params = train_dataset[0]
     print(x.shape, y.shape, params.shape)
