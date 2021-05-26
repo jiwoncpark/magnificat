@@ -108,9 +108,9 @@ class LSSTCadence:
             mjd = (obs_info_i['expMJD'].values - self.min_mjd)
             np.save(osp.join(self.out_dir, f'mjd_{i}.npy'), mjd)
             # Store observation mask, 1 where observed in filter else 0
-            mask = np.zeros([len(mjd), 6])  # [n_obs, 6]
+            mask = np.zeros([len(mjd), 6]).astype(bool)  # [n_obs, 6]
             for bp_i in range(6):
-                mask[:, bp_i] = (filters == bp_i).astype(int)
+                mask[:, bp_i] = (filters == bp_i)
             np.save(osp.join(self.out_dir, f'mask_{i}.npy'), mask)
 
     def get_mjd_single_pointing(self, i: int, rounded: bool):
@@ -120,9 +120,9 @@ class LSSTCadence:
         return mjd
 
     def get_mask_single_pointing(self, i: int):
-        mask = np.load(osp.join(self.out_dir, f'mask_{i}.npy')).astype(int)
+        mask = np.load(osp.join(self.out_dir, f'mask_{i}.npy'))
         if self.bandpasses_int is not None:
-            mask = mask[:, self.bandpasses_int].astype(int)
+            mask = mask[:, self.bandpasses_int]
         return mask
 
     def load_opsim_db(self):
