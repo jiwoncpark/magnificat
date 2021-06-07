@@ -106,6 +106,7 @@ class LSSTCadence:
             filters = np.array(list(map(self.bp_to_int.get, filters)))
             # Store MJD
             mjd = (obs_info_i['expMJD'].values - self.min_mjd)
+            mjd.sort()
             np.save(osp.join(self.out_dir, f'mjd_{i}.npy'), mjd)
             # Store observation mask, 1 where observed in filter else 0
             mask = np.zeros([len(mjd), 6]).astype(bool)  # [n_obs, 6]
