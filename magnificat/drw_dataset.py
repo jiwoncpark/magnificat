@@ -32,6 +32,7 @@ class DRWDataset(Dataset):
                  SF_inf_tau_mean_z_sampler,
                  out_dir,
                  num_samples,
+                 bandpasses=None,
                  rescale_x=0.001,
                  shift_x=0.0,
                  delta_x=1.0,
@@ -40,7 +41,7 @@ class DRWDataset(Dataset):
                  seed=123):
         self.SF_inf_tau_mean_z_sampler = SF_inf_tau_mean_z_sampler
         # Figure out how many bandpasses are sampled
-        bandpasses = self.SF_inf_tau_mean_z_sampler.bandpasses
+        bandpasses = self.SF_inf_tau_mean_z_sampler.bandpasses if bandpasses is None else bandpasses
         self.bandpasses_int = [self.bp_to_int[bp] for bp in bandpasses]
         self.bandpasses_int.sort()
         self.bandpasses = [self.int_to_bp[bp_i] for bp_i in self.bandpasses_int]
@@ -73,6 +74,8 @@ class DRWDataset(Dataset):
         self.log_params = None
         self.slice_params = None
         self._generate_light_curves_multi_filter()
+        np.savetxt(os.path.join(out_dir, 'cat_idx.txt'),
+                   self.SF_inf_tau_mean_z_sampler.idx, fmt='%i')
 
     def _generate_light_curves_multi_filter(self):
         """Generate and store fully observed DRW light curves
@@ -121,9 +124,12 @@ class DRWDataset(Dataset):
         # y = torch.from_numpy(y).unsqueeze(1)
         # y = np.interp(x, t_obs_full, y_full)
         # Rescale x
+        x = x[:, self.bandpasses_int]
+        y = y[:, self.bandpasses_int]
         x += self.shift_x
         x *= self.rescale_x
         # Add noise and rescale flux to [-1, 1]
+        y -= 30.0
         y += torch.randn_like(y)*self.err_y
         # y = (y - torch.min(y))/(torch.max(y) - torch.min(y))*2.0 - 1.0
         # Standardize params
