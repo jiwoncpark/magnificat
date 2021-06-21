@@ -126,8 +126,8 @@ class SDSSDR7Dataset(Dataset):
                  bandpasses,
                  out_dir,
                  num_samples,
-                 rescale_x=0.001,
-                 shift_x=0.0,
+                 rescale_x=1.0/(3339*0.5)*4.0,
+                 shift_x=-3339*0.5,
                  metadata_kwargs=dict(keep_agn_mode='max_obs'),
                  light_curve_kwargs=dict(),):
         self.agn_params = agn_params
@@ -322,13 +322,14 @@ class SDSSDR7Dataset(Dataset):
         # [n_obs, n_filters]
         x = torch.from_numpy(np.load(os.path.join(self.out_dir, 'processed',
                                                   f'x_{index}.npy'),
-                                     allow_pickle=True))
+                                     allow_pickle=True)).float()
         y = torch.from_numpy(np.load(os.path.join(self.out_dir, 'processed',
                                                   f'y_{index}.npy'),
-                                     allow_pickle=True))
+                                     allow_pickle=True)).float()
         y_err = torch.from_numpy(np.load(os.path.join(self.out_dir, 'processed',
                                                       f'y_err_{index}.npy'),
-                                         allow_pickle=True))
+                                         allow_pickle=True)).float()
+        y_err = torch.minimum(y_err, torch.ones_like(y_err)*0.01)
         # Rescale x
         x += self.shift_x
         x *= self.rescale_x
@@ -342,24 +343,22 @@ class SDSSDR7Dataset(Dataset):
         params += agn_row[self.agn_params].values.tolist()[0]
         for bp in self.bandpasses:
             params += sub_meta.loc[sub_meta['bandpass'] == bp, self.bp_params].values.tolist()[0]
-        params = torch.tensor(params)
+        params = torch.tensor(params).float()
 
         # Standardize params
         if self.mean_params is not None:
-            params -= self.mean_params[self.slice_params, :]
-            params /= self.std_params[self.slice_params, :]
+            params -= self.mean_params
+            params /= self.std_params
         return x, y, params
 
-    def get_normalizing_metadata(self):
-        loader = DataLoader(self,
-                            batch_size=100,
-                            shuffle=False,
-                            drop_last=False)
-        mean_params = torch.zeros([4, len(self.bandpasses)])
-        std_params = torch.zeros([4, len(self.bandpasses)])
-        for i, (_, _, params) in enumerate(loader):
-            mean_params += (torch.mean(params, dim=0) - mean_params)/(i+1)
-            std_params += (torch.std(params, dim=0) - std_params)/(i+1)
+    def get_normalizing_metadata(self, dataloader):
+        mean_params = 0.0
+        std_params = 0.0
+        for i, (_, _, _, _, params) in enumerate(dataloader):
+            # params ~ list of batch_size tensors, each of shape [n_params]
+            stacked_params = torch.cat(params, dim=0).to(torch.device('cpu'))
+            mean_params += (torch.mean(stacked_params, dim=0) - mean_params)/(i+1)
+            std_params += (torch.std(stacked_params, dim=0) - std_params)/(i+1)
         self.mean_params = mean_params
         self.std_params = std_params
 
