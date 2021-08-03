@@ -3,6 +3,9 @@
 *.txt
 *.fits
 *.npy
+*.png
+magnificat/input_data/
+data/
 
 # Jupyter notebook
 */ipynb_checkpoints
