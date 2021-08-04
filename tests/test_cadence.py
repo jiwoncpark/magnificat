@@ -15,7 +15,7 @@ class TestLSSTCadence(unittest.TestCase):
     def test_get_pointings(self):
         """Test input and output shapes of get_pointings
         """
-        cadence_obj = cadence.LSSTCadence(self.out_dir, 1234)
+        cadence_obj = cadence.LSSTCadence(self.out_dir)
         ra, dec = cadence_obj.get_pointings(100)
         np.testing.assert_equal(len(ra), 100)
         np.testing.assert_equal(len(dec), 100)
@@ -24,7 +24,7 @@ class TestLSSTCadence(unittest.TestCase):
         """Test queried visits of get_obs_info
 
         """
-        cadence_obj = cadence.LSSTCadence(self.out_dir, 1234)
+        cadence_obj = cadence.LSSTCadence(self.out_dir)
         ra, dec = cadence_obj.get_pointings(100)
         cadence_obj.get_obs_info(ra, dec, skip_ddf=True)
         # Final n_pointings should be <= requested 100
@@ -39,7 +39,7 @@ class TestLSSTCadence(unittest.TestCase):
         """Test `get_mjd_single_pointing`
 
         """
-        cadence_obj = cadence.LSSTCadence(self.out_dir, 1234)
+        cadence_obj = cadence.LSSTCadence(self.out_dir)
         ra, dec = cadence_obj.get_pointings(100)
         cadence_obj.get_obs_info(ra, dec, skip_ddf=True)
         mjd = cadence_obj.get_mjd_single_pointing(0, rounded=True)
@@ -51,7 +51,7 @@ class TestLSSTCadence(unittest.TestCase):
         """Test `get_mask_single_pointing`
 
         """
-        cadence_obj = cadence.LSSTCadence(self.out_dir, 1234)
+        cadence_obj = cadence.LSSTCadence(self.out_dir)
         ra, dec = cadence_obj.get_pointings(100)
         cadence_obj.get_obs_info(ra, dec, skip_ddf=True)
         mjd = cadence_obj.get_mjd_single_pointing(0, rounded=True)
@@ -64,7 +64,7 @@ class TestLSSTCadence(unittest.TestCase):
         """Test `bin_by_day`
 
         """
-        cadence_obj = cadence.LSSTCadence(self.out_dir, 1234)
+        cadence_obj = cadence.LSSTCadence(self.out_dir)
         ra, dec = cadence_obj.get_pointings(100)
         cadence_obj.get_obs_info(ra, dec, skip_ddf=True)
         cadence_obj.bin_by_day()

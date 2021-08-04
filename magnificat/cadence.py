@@ -17,10 +17,9 @@ class LSSTCadence:
     int_to_bp = dict(zip(range(6), list('ugrizy')))
     bp = list('ugrizy')
 
-    def __init__(self, out_dir, seed: int = 1234):
+    def __init__(self, out_dir):
         self.out_dir = out_dir
         os.makedirs(self.out_dir, exist_ok=True)
-        self.seed = seed
         cols = ['expMJD', 'visitExpTime', 'obsHistID']
         cols += ['descDitheredRA', 'descDitheredDec', 'fiveSigmaDepth']
         cols += ['filtSkyBrightness']
@@ -224,7 +223,7 @@ class LSSTCadence:
 
 
 if __name__ == '__main__':
-    cadence_obj = LSSTCadence('obs', 1234)
+    cadence_obj = LSSTCadence('obs')
     ra, dec = cadence_obj.get_pointings(100)
     cadence_obj.get_obs_info(ra, dec)
     mjd = cadence_obj.get_mjd_single_pointing(0, rounded=False)
