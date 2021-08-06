@@ -45,7 +45,7 @@ class TestLSSTCadence(unittest.TestCase):
         mjd = cadence_obj.get_mjd_single_pointing(0, rounded=True)
         assert mjd.dtype is np.dtype(np.int64)
         assert np.min(mjd) >= 0
-        assert np.max(mjd) <= 3650
+        assert np.max(mjd) <= 3649
 
     def test_get_mask_single_pointing(self):
         """Test `get_mask_single_pointing`

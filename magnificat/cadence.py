@@ -5,6 +5,7 @@ import sqlite3
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
+import torch
 import magnificat.observation_utils as obs_utils
 
 
@@ -81,7 +82,8 @@ class LSSTCadence:
         return ra[:n_pointings_init], dec[:n_pointings_init]
 
     def get_obs_info(self, ra: np.ndarray, dec: np.ndarray,
-                     skip_existing=True, skip_ddf=True):
+                     skip_existing=True,
+                     min_visits=0, skip_ddf=True):
         """Loop through pointings and query visits that fall inside FOV
 
         Note
@@ -113,6 +115,8 @@ class LSSTCadence:
             mjd = (obs_info_i['expMJD'].values - self.min_mjd)
             mjd.sort()
             # Skip DDF visits, which have more than 1500 visits
+            if len(mjd) < min_visits:
+                continue
             if skip_ddf:
                 if len(mjd) > 1500:
                     continue
@@ -185,12 +189,14 @@ class LSSTCadence:
         """
         return np.load(osp.join(self.out_dir, 'mjd_trimmed.npy'))
 
-    def get_trimmed_mask(self, i: int):
+    def get_trimmed_mask(self, i: int, as_tensor=False):
         """Get trimmed mask that has times corresponding to trimmed_mjd
 
         """
         mask = np.load(osp.join(self.out_dir, f'trimmed_mask_{i}.npy'))
         mask = mask.astype(bool)
+        if as_tensor:
+            mask = torch.from_numpy(mask).to(torch.bool)
         return mask
 
     def get_mjd_single_pointing(self, i: int, rounded: bool):
