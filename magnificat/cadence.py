@@ -95,9 +95,6 @@ class LSSTCadence:
         opsim = self.load_opsim_db()
         n_pointings = 0  # init
         for i, (r, d) in tqdm(enumerate(zip(ra, dec)), total=len(ra)):
-            if skip_existing:
-                if os.path.exists(osp.join(self.out_dir, f'mask_{i}.npy')):
-                    continue
             obs_info_i = pd.DataFrame()
             # Get distance from each visit row to pointing, (r, d)
             dist, _, _ = obs_utils.get_distance(ra_f=opsim['ra'].values,
@@ -125,6 +122,11 @@ class LSSTCadence:
             for bp_i in range(6):
                 mask[:, bp_i] = (filters == bp_i)
             # Store obs info, MJD, and mask for later access
+            if skip_existing:
+                if os.path.exists(osp.join(self.out_dir,
+                                           f'mask_{n_pointings}.npy')):
+                    n_pointings += 1
+                    continue
             obs_info_i.to_csv(osp.join(self.out_dir,
                                        f'obs_{n_pointings}.csv'),
                               index=None)
@@ -133,6 +135,7 @@ class LSSTCadence:
             np.save(osp.join(self.out_dir,
                              f'mask_{n_pointings}.npy'), mask)
             n_pointings += 1
+        print(f"{n_pointings} pointings were available.")
         self.n_pointings = n_pointings
 
     def bin_by_day(self, skip_existing=True):
@@ -155,9 +158,9 @@ class LSSTCadence:
         np.save(osp.join(self.out_dir,
                          'observed_mask.npy'), observed)
         mjd_trimmed = full_mjd[observed]  # [trimmed_T,]
-        print(f"Trimmed MJD has {len(mjd_trimmed)} out of 3650 days.")
         np.save(osp.join(self.out_dir,
                          'mjd_trimmed.npy'), mjd_trimmed)
+        print(f"Trimmed MJD has {len(mjd_trimmed)} out of 3650 days.")
         # Compile binned mask
         for p in range(self.n_pointings):
             if skip_existing:

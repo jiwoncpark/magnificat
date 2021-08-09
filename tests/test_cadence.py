@@ -20,6 +20,29 @@ class TestLSSTCadence(unittest.TestCase):
         np.testing.assert_equal(len(ra), 100)
         np.testing.assert_equal(len(dec), 100)
 
+    def test_seeding(self):
+        """Test seeding
+        """
+        # Run 0
+        cadence_obj = cadence.LSSTCadence(self.out_dir)
+        ra0, dec0 = cadence_obj.get_pointings(100)
+        cadence_obj.get_obs_info(ra0, dec0)
+        cadence_obj.bin_by_day()
+        n_pointings_0 = cadence_obj.n_pointings
+        obs_mask_0 = cadence_obj.get_observed_mask()
+
+        # Run 1
+        cadence_obj = cadence.LSSTCadence(self.out_dir)
+        ra1, dec1 = cadence_obj.get_pointings(100)
+        cadence_obj.get_obs_info(ra1, dec1)
+        cadence_obj.bin_by_day()
+        n_pointings_1 = cadence_obj.n_pointings
+        obs_mask_1 = cadence_obj.get_observed_mask()
+        np.testing.assert_array_equal(ra0, ra1)
+        np.testing.assert_array_equal(dec0, dec1)
+        np.testing.assert_array_equal(n_pointings_0, n_pointings_1)
+        np.testing.assert_array_equal(obs_mask_0, obs_mask_1)
+
     def test_get_obs_info(self):
         """Test queried visits of get_obs_info
 
