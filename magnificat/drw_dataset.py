@@ -106,7 +106,7 @@ class DRWDataset(Dataset):
         self.cadence_obj.get_obs_info(ra, dec, skip_ddf=True,
                                       min_visits=500)
         self.cadence_obj.bin_by_day()
-        obs_mask = self.cadence_obj.get_observed_mask()  # [trimmed_T,]
+        obs_mask = self.cadence_obj.get_observed_mask()  # [3650,]
         self.trimmed_T = sum(obs_mask)
         self.obs_mask = torch.from_numpy(obs_mask).to(torch.bool)
         self.rng = np.random.default_rng(self.seed)  # for sampling pointings
@@ -138,7 +138,7 @@ class DRWDataset(Dataset):
                 SF_inf = params_dict[f'SF_inf_{bp}']
                 mean_mag = params_dict[f'mag_{bp}']
                 y = self._generate_light_curve(index, tau, SF_inf,
-                                               mean_mag, z)
+                                               mean_mag, z)  # [3650,]
                 y_concat[:, bp_int] = y
             # Sort params in predetermined ordering
             params = torch.tensor([params_dict[n] for n in self.param_names])  # [n_params]

@@ -48,6 +48,28 @@ class TestDRWDataset(unittest.TestCase):
                                  n_pointings_init=10,
                                  is_training=True)
 
+    def test_seeding(self):
+        """Test seeding of sightlines
+        """
+        bandpasses = ['g', 'r', 'i']
+        # Run 0
+        sampler = Sampler(123, bandpasses)
+        drw_dataset = DRWDataset(sampler,
+                                 self.out_dir,
+                                 num_samples=2,
+                                 n_pointings_init=10,
+                                 is_training=True)
+        n_pointings_run0 = drw_dataset.cadence_obj.n_pointings
+        # Run 1
+        sampler = Sampler(123, bandpasses)
+        drw_dataset = DRWDataset(sampler,
+                                 self.out_dir,
+                                 num_samples=2,
+                                 n_pointings_init=10,
+                                 is_training=True)
+        n_pointings_run1 = drw_dataset.cadence_obj.n_pointings
+        np.testing.assert_equal(n_pointings_run0, n_pointings_run1)
+
     def test_getitem(self):
         """Test `__getitem__`
         """
@@ -57,7 +79,10 @@ class TestDRWDataset(unittest.TestCase):
                                  self.out_dir,
                                  num_samples=3,
                                  n_pointings_init=10,
-                                 is_training=True)
+                                 is_training=True,
+                                 shift_x=0.0,
+                                 rescale_x=1.0,
+                                 err_y=0.01)
         data = drw_dataset[0]
         # bandpasses
         np.testing.assert_array_equal(drw_dataset.bandpasses,
@@ -72,6 +97,39 @@ class TestDRWDataset(unittest.TestCase):
         assert not (data['y'] < -50).any()  # can't be -99
         # param
         assert len(data['params']) == len(drw_dataset.param_names)
+        # trimmed_mask
+        np.testing.assert_array_equal(data['trimmed_mask'].shape,
+                                      [drw_dataset.trimmed_T, len(bandpasses)])
+
+    def test_getitem_transforms(self):
+        """Test `__getitem__` with transforms
+        """
+        bandpasses = ['g', 'i', 'r']
+        sampler = Sampler(123, bandpasses)
+        drw_dataset = DRWDataset(sampler,
+                                 self.out_dir,
+                                 num_samples=3,
+                                 n_pointings_init=10,
+                                 is_training=True,
+                                 shift_x=0.0,
+                                 rescale_x=1.0,
+                                 err_y=0.01)
+        slice_params = [drw_dataset.param_names.index(n) for n in ['redshift', 'M_i']]
+        drw_dataset.slice_params = slice_params
+        data = drw_dataset[0]
+        # bandpasses
+        np.testing.assert_array_equal(drw_dataset.bandpasses,
+                                      ['g', 'r', 'i'])
+        np.testing.assert_array_equal(drw_dataset.bandpasses_int,
+                                      [1, 2, 3])
+        # x
+        assert len(data['x']) == drw_dataset.trimmed_T
+        # y
+        np.testing.assert_array_equal(data['y'].shape,
+                                      [drw_dataset.trimmed_T, len(bandpasses)])
+        assert not (data['y'] < -50).any()  # can't be -99
+        # param
+        assert len(data['params']) == len(slice_params)
         # trimmed_mask
         np.testing.assert_array_equal(data['trimmed_mask'].shape,
                                       [drw_dataset.trimmed_T, len(bandpasses)])
