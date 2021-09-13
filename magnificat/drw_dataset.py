@@ -1,7 +1,6 @@
 import os
 import os.path as osp
 import numpy as np
-from numpy.random import default_rng
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -19,12 +18,13 @@ class DRWDataset(Dataset):
                  SF_inf_tau_mean_z_sampler,
                  out_dir,
                  num_samples,
-                 n_pointings_init,
                  is_training,
                  rescale_x=0.001,
                  shift_x=0.0,
                  err_y=0.01,
-                 seed=123):
+                 prestored_bandpasses=list('ugrizy'),
+                 seed=123,
+                 obs_kwargs={}):
         """Dataset of DRW light curves
 
         Parameters
@@ -39,8 +39,6 @@ class DRWDataset(Dataset):
             Output directory for this dataset
         num_samples : int
             Number of AGNs in this dataset
-        n_pointings_init : int
-            How many pointings to request
         is_training : bool
             whether this is the training set
         rescale_x : float, optional
@@ -51,8 +49,16 @@ class DRWDataset(Dataset):
             sensitive to the absolute scale of time
         err_y : float, optional
             1-sigma scatter in the photometric error, in mag
+        prestored_bandpasses : TYPE, optional
+            Description
         seed : int, optional
-            Random seed relevant for sampling pointings
+            Random seed relevant for generating DRW light curves
+        obs_kwargs: dict
+            Parameters defining pointings. Includes as keys 'n_pointings_init'
+            (number of pointings to request), 'obs_dir' (directory
+            containing observation conditions), 'seed' (random seed for
+            sampling observation conditions for each light curve, defaults to
+            `seed`), 'bandpasses' (list of bandpasses to include in trimming)
         """
         self.SF_inf_tau_mean_z_sampler = SF_inf_tau_mean_z_sampler
         # Figure out which bandpasses are sampled
@@ -61,17 +67,18 @@ class DRWDataset(Dataset):
         self.bandpasses_int.sort()
         self.bandpasses = [self.int_to_bp[bp_i] for bp_i in self.bandpasses_int]
         # Compile list of parameters, both bp-dependent and otherwise
+        # Determined at data generation time
         param_names = ['BH_mass', 'M_i']
-        param_names += [f'SF_inf_{bp}' for bp in self.bandpasses]
-        param_names += [f'mag_{bp}' for bp in self.bandpasses]
+        param_names += [f'SF_inf_{bp}' for bp in prestored_bandpasses]
+        param_names += [f'mag_{bp}' for bp in prestored_bandpasses]
         param_names += ['redshift']
-        param_names += [f'tau_{bp}' for bp in self.bandpasses]
+        param_names += [f'tau_{bp}' for bp in prestored_bandpasses]
         self.param_names = param_names
         # Create output directory for this dataset
         self.out_dir = out_dir
         os.makedirs(self.out_dir, exist_ok=True)
         self.num_samples = num_samples
-        self.n_pointings_init = n_pointings_init
+        self.obs_kwargs = obs_kwargs
         self.is_training = is_training
         self.seed = seed
         self.rescale_x = rescale_x
@@ -96,20 +103,22 @@ class DRWDataset(Dataset):
         np.savetxt(os.path.join(out_dir, 'cat_idx.txt'),
                    self.SF_inf_tau_mean_z_sampler.idx, fmt='%i')
 
+    def get_sliced_params(self):
+        return np.array(self.param_names)[np.array(self.slice_params)]
+
     def load_obs_strat(self):
         """Load observation strategies
 
         """
-        self.cadence_obj = LSSTCadence(osp.join(self.out_dir,
-                                                f'obs_{self.seed}'))
-        ra, dec = self.cadence_obj.get_pointings(self.n_pointings_init)
+        self.cadence_obj = LSSTCadence(self.obs_kwargs['obs_dir'])
+        ra, dec = self.cadence_obj.get_pointings(self.obs_kwargs['n_pointings_init'])
         self.cadence_obj.get_obs_info(ra, dec, skip_ddf=True,
                                       min_visits=500)
-        self.cadence_obj.bin_by_day()
+        self.cadence_obj.bin_by_day(bandpasses=self.obs_kwargs['bandpasses'])
         obs_mask = self.cadence_obj.get_observed_mask()  # [3650,]
         self.trimmed_T = sum(obs_mask)
         self.obs_mask = torch.from_numpy(obs_mask).to(torch.bool)
-        self.rng = np.random.default_rng(self.seed)  # for sampling pointings
+        self.rng = np.random.default_rng(self.obs_kwargs.get('seed', self.seed))  # for sampling pointings
 
     def get_t_obs(self):
         """Get full 10-year times in observed frame
@@ -224,6 +233,7 @@ class DRWDataset(Dataset):
                             drop_last=False)
         mean_params = 0.0
         var_params = 0.0
+        print("Computing normalizing metadata...")
         # Compute mean, std
         for i, data in enumerate(loader):
             params = data['params']

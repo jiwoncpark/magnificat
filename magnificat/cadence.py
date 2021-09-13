@@ -85,6 +85,7 @@ class LSSTCadence:
                      skip_existing=True,
                      min_visits=0, skip_ddf=True):
         """Loop through pointings and query visits that fall inside FOV
+        (run at generation time)
 
         Note
         ----
@@ -138,16 +139,21 @@ class LSSTCadence:
         print(f"{n_pointings} pointings were available.")
         self.n_pointings = n_pointings
 
-    def bin_by_day(self, skip_existing=True):
-        """Bin the observations by day
+    def bin_by_day(self, bandpasses=list('ugrizy'), skip_existing=True):
+        """Bin the observations by day, trimming days that weren't observed
+        in any filter and in any pointing (run at generation time)
 
         Parameters
         ----------
+        bandpasses : list
+            Bandpasses to base binning on
         skip_existing : bool, optional
             whether to skip operations for pointings already saved
             to disk
 
         """
+        bp_int = [self.bp_to_int[bp] for bp in bandpasses]
+        n_bp = len(bp_int)
         # Mask indicating if a time was observed at least once in any filter
         full_mjd = np.arange(3650)
         observed = np.zeros(3650).astype(bool)  # init as all unobserved
@@ -168,12 +174,12 @@ class LSSTCadence:
                                            f'trimmed_mask_{p}.npy')):
                     continue
             # 10-year full mask in all filters
-            full = np.zeros([3650, 6]).astype(bool)  # init, all unobserved
+            full = np.zeros([3650, n_bp]).astype(bool)  # init, all unobserved
             # 10-year observed days combined across filters for this pointing
             mjd = self.get_mjd_single_pointing(p, rounded=True)  # [n_obs,]
             mask = self.get_mask_single_pointing(p)  # [n_obs, 6]
-            for bp_i in range(6):
-                full[mjd, bp_i] = mask[:, bp_i]
+            for i, bp_i in enumerate(bp_int):
+                full[mjd, i] = mask[:, bp_i]
             trimmed = full[observed, :]  # trim so only relevant times remain
             np.save(osp.join(self.out_dir,
                              f'trimmed_mask_{p}.npy'), trimmed)
@@ -233,12 +239,16 @@ class LSSTCadence:
 
 if __name__ == '__main__':
     cadence_obj = LSSTCadence('obs')
-    ra, dec = cadence_obj.get_pointings(100)
+    ra, dec = cadence_obj.get_pointings(1)
     cadence_obj.get_obs_info(ra, dec)
     mjd = cadence_obj.get_mjd_single_pointing(0, rounded=False)
     print("mjd: ", mjd.shape)
     mask = cadence_obj.get_mask_single_pointing(0)
     print("mask: ", mask.shape)
+    print("mask n_observed: ", np.sum(mask, axis=0), np.sum(mask))
     print(ra.shape)
-    cadence_obj.bin_by_day()
+    cadence_obj.bin_by_day(bandpasses=['r'])
+    t_mask = cadence_obj.get_trimmed_mask(0)
+    print("trimmed mask: ", t_mask.shape)
+    print("trimmed n_observed: ", np.sum(t_mask, axis=0), np.sum(t_mask))
 
