@@ -19,8 +19,8 @@ class DRWDataset(Dataset):
                  out_dir,
                  num_samples,
                  is_training,
-                 rescale_x=0.001,
-                 shift_x=0.0,
+                 transform_x_func=lambda x: x,
+                 transform_y_func=lambda x: x,
                  err_y=0.01,
                  prestored_bandpasses=list('ugrizy'),
                  seed=123,
@@ -41,12 +41,9 @@ class DRWDataset(Dataset):
             Number of AGNs in this dataset
         is_training : bool
             whether this is the training set
-        rescale_x : float, optional
-            Rescaling factor for the times x, useful if the ML model is
-            sensitive to the absolute scale of time
-        shift_x : float, optional
-            Additive shift for the times x, useful if the ML model is
-            sensitive to the absolute scale of time
+        transform_x_func : callable, optional
+            Transform function for the times x, useful if the ML model is
+            sensitive to the absolute scale of time. Default: identity function
         err_y : float, optional
             1-sigma scatter in the photometric error, in mag
         prestored_bandpasses : TYPE, optional
@@ -81,15 +78,14 @@ class DRWDataset(Dataset):
         self.obs_kwargs = obs_kwargs
         self.is_training = is_training
         self.seed = seed
-        self.rescale_x = rescale_x
-        self.shift_x = shift_x
+        self.transform_x_func = transform_x_func
+        self.transform_y_func = transform_y_func
         self.delta_x = 1.0  # 1-day interval
         self.max_x = 3650.0  # LSST 10-year
         self.err_y = err_y
         # Preview of untrimmed times
         self.x_grid = np.arange(0, self.max_x, self.delta_x)
-        self.x_grid += self.shift_x
-        self.x_grid *= self.rescale_x
+        self.x_grid = self.transform_x_func(self.x_grid)
         self.n_points = len(self.x_grid)
         # For standardizing params
         self.mean_params = None
@@ -102,6 +98,8 @@ class DRWDataset(Dataset):
         self._generate_x_y_params()
         np.savetxt(os.path.join(out_dir, 'cat_idx.txt'),
                    self.SF_inf_tau_mean_z_sampler.idx, fmt='%i')
+        self._fully_obs = False  # init property
+        self._add_noise = True  # init property
 
     def get_sliced_params(self):
         return np.array(self.param_names)[np.array(self.slice_params)]
@@ -113,7 +111,7 @@ class DRWDataset(Dataset):
         self.cadence_obj = LSSTCadence(self.obs_kwargs['obs_dir'])
         ra, dec = self.cadence_obj.get_pointings(self.obs_kwargs['n_pointings_init'])
         self.cadence_obj.get_obs_info(ra, dec, skip_ddf=True,
-                                      min_visits=500)
+                                      min_visits=50)
         self.cadence_obj.bin_by_day(bandpasses=self.obs_kwargs['bandpasses'])
         obs_mask = self.cadence_obj.get_observed_mask()  # [3650,]
         self.trimmed_T = sum(obs_mask)
@@ -131,7 +129,8 @@ class DRWDataset(Dataset):
 
         """
         # Save times first, since it's the same for all AGNs in dataset
-        x = self.get_t_obs()[self.obs_mask]  # [trimmed_T]
+        x = self.get_t_obs()  # [3651]
+        torch.save(self.obs_mask, osp.join(self.out_dir, 'obs_mask.pt'))
         torch.save(x, osp.join(self.out_dir, 'x.pt'))
         for index in tqdm(range(self.num_samples), desc="y, params"):
             if osp.exists(osp.join(self.out_dir, f'drw_{index}.pt')):
@@ -152,7 +151,9 @@ class DRWDataset(Dataset):
             # Sort params in predetermined ordering
             params = torch.tensor([params_dict[n] for n in self.param_names])  # [n_params]
             # Concat along filter dimension in predetermined filter ordering
-            y_concat = y_concat[self.obs_mask, :]  # [trimmed_T, N_filters]
+            # y_concat = y_concat[self.obs_mask, :]  # [trimmed_T, N_filters]
+            # Save y_concat without obs_mask
+            # y_concat ~ [3651, N_filters]
             torch.save((y_concat, params),
                        osp.join(self.out_dir, f'drw_{index}.pt'))
 
@@ -187,19 +188,41 @@ class DRWDataset(Dataset):
                                     xmean=mean)  # [T,]
         return y
 
+    @property
+    def fully_obs(self):
+        return self._fully_obs
+
+    @fully_obs.setter
+    def fully_obs(self, val):
+        self._fully_obs = val
+
+    @property
+    def add_noise(self):
+        return self._add_noise
+
+    @add_noise.setter
+    def add_noise(self, val):
+        self._add_noise = val
+
     def __getitem__(self, index):
-        # Load trimmed times
-        x = torch.load(osp.join(self.out_dir, 'x.pt'))  # [trimmed_T,]
-        # Load fully observed light curve at trimmed times
+        # Load fully observed light curve at fully obs times
         y, params = torch.load(osp.join(self.out_dir,
-                                        f'drw_{index}.pt'))  # [trimmed_T, 6]
+                                        f'drw_{index}.pt'))  # [T=3650, 6]
+        if self.fully_obs:
+            obs_mask = slice(None)
+        else:
+            obs_mask = self.obs_mask
+        # Trim the times
+        x = torch.load(osp.join(self.out_dir, 'x.pt'))[obs_mask]  # [trimmed_T,]
+        y = y[obs_mask, :]
         # Slice relevant bandpasses
         y = y[:, self.bandpasses_int]
         # Rescale x for numerical stability of ML model
-        x += self.shift_x
-        x *= self.rescale_x
+        x = self.transform_x_func(x)
         # Add noise and rescale flux to [-1, 1]
-        y += torch.randn_like(y)*self.err_y
+        if self.add_noise:
+            y += torch.randn_like(y)*self.err_y
+        y = self.transform_y_func(y)
         # y = (y - torch.min(y))/(torch.max(y) - torch.min(y))*2.0 - 1.0
         if self.slice_params is not None:
             params = params[self.slice_params]
@@ -214,10 +237,10 @@ class DRWDataset(Dataset):
             p = self.rng.integers(low=0, high=self.cadence_obj.n_pointings)
         else:
             # Do not shuffle pointing for validation set
-            p = index
+            p = 0
         trimmed_mask = self.cadence_obj.get_trimmed_mask(p,
                                                          as_tensor=True)
-        trimmed_mask = trimmed_mask[:, self.bandpasses_int]
+        # trimmed_mask = trimmed_mask[:, self.bandpasses_int]
 
         data = dict(x=x,
                     y=y,
