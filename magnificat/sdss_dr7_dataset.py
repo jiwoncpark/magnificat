@@ -149,6 +149,9 @@ class SDSSDR7Dataset(Dataset):
                                                   'metadata.dat')
         self.metadata_kwargs = metadata_kwargs
         self.light_curve_kwargs = light_curve_kwargs
+
+    def process(self):
+        """Process the metadata and light curves"""
         self._process_metadata(**self.metadata_kwargs)
         self.lc_ids = np.sort(np.unique(self.metadata['dbID'].values))
         self.int_to_lc_id = dict(zip(np.arange(len(self.lc_ids)), self.lc_ids))
@@ -353,14 +356,17 @@ class SDSSDR7Dataset(Dataset):
 
     def get_normalizing_metadata(self, dataloader):
         mean_params = 0.0
-        std_params = 0.0
+        var_params = 0.0
         for i, (_, _, _, _, params) in enumerate(dataloader):
             # params ~ list of batch_size tensors, each of shape [n_params]
             stacked_params = torch.cat(params, dim=0).to(torch.device('cpu'))
-            mean_params += (torch.mean(stacked_params, dim=0) - mean_params)/(i+1)
-            std_params += (torch.std(stacked_params, dim=0) - std_params)/(i+1)
+            new_mean = stacked_params.mean(dim=0, keepdim=True)
+            new_var = stacked_params.var(dim=0, unbiased=False, keepdim=True)
+            var_params += (new_var - var_params)/(i+1)
+            var_params += (i/(i+1)**2.0)*(mean_params - new_mean)**2.0
+            mean_params += (new_mean - mean_params)/(i+1)
         self.mean_params = mean_params
-        self.std_params = std_params
+        self.std_params = var_params**0.5
 
     def __len__(self):
         return self.num_samples
