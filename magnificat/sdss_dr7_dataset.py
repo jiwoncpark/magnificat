@@ -61,6 +61,7 @@ def load_sdss_dr7_catalogs(bandpasses):
                                          merged['M_i_shen'].values)
     np.testing.assert_array_almost_equal(merged['redshift'].values,
                                          merged['redshift_shen'].values)
+    merged.drop(['M_i_shen', 'redshift_shen'], axis=1, inplace=True)
     return merged
 
 
@@ -226,8 +227,8 @@ class SDSSDR7Dataset(Dataset):
             raise NotImplementedError
 
     def _save_metadata(self):
-        self.metadata['tau'] = 10.0**(self.metadata['log_tau'].values)
-        self.metadata['SF_inf'] = 10.0**(self.metadata['log_sf_inf'].values)
+        # self.metadata['tau'] = 10.0**(self.metadata['log_rf_tau'].values)
+        # self.metadata['SF_inf'] = 10.0**(self.metadata['log_sf_inf'].values)
         self.metadata.to_csv(self.cleaned_metadata_path, index=None)
 
     @cached_property
@@ -347,21 +348,37 @@ class SDSSDR7Dataset(Dataset):
         for bp in self.bandpasses:
             params += sub_meta.loc[sub_meta['bandpass'] == bp, self.bp_params].values.tolist()[0]
         params = torch.tensor(params).float()
+        # Add front dimension
+        params.unsqueeze_(0)
 
         # Standardize params
         if self.mean_params is not None:
             params -= self.mean_params
             params /= self.std_params
-        return x, y, params
+
+        data = dict(x=x,
+                    y=y,
+                    params=params)
+        return data
 
     def get_normalizing_metadata(self, dataloader):
+        """Compute and set normalizing mean and std for the params
+
+        Parameters
+        ----------
+        data_loader: iterator
+            Loader for the params (not necessarily the same as loader for
+            training set)
+
+        """
         mean_params = 0.0
         var_params = 0.0
-        for i, (_, _, _, _, params) in enumerate(dataloader):
+        for i, batch in enumerate(dataloader):
             # params ~ list of batch_size tensors, each of shape [n_params]
-            stacked_params = torch.cat(params, dim=0).to(torch.device('cpu'))
-            new_mean = stacked_params.mean(dim=0, keepdim=True)
-            new_var = stacked_params.var(dim=0, unbiased=False, keepdim=True)
+            #stacked_params = torch.cat(params, dim=0).to(torch.device('cpu'))
+            params = batch['params']
+            new_mean = params.mean(dim=0, keepdim=True)
+            new_var = params.var(dim=0, unbiased=False, keepdim=True)
             var_params += (new_var - var_params)/(i+1)
             var_params += (i/(i+1)**2.0)*(mean_params - new_mean)**2.0
             mean_params += (new_mean - mean_params)/(i+1)
