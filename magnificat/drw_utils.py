@@ -79,13 +79,13 @@ def get_drw_torch(t_rest, tau, z, SF_inf, xmean=0):
     t_rest : array_like
         rest-frame time.  Should be in increasing order
     tau : float
-        relaxation time
+        relaxation time in days
     z : float
         redshift
     xmean : float (optional)
         mean value of random walk; default=0
     SF_inf : float (optional
-        Structure function at infinity; default=0.3
+        Structure function at infinity, in mag; default=0.3
     random_state : int
         random seed or random number generator
 
