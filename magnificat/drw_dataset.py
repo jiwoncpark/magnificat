@@ -67,7 +67,7 @@ class DRWDataset(Dataset):
         # Determined at data generation time
         param_names = ['BH_mass', 'M_i']
         param_names += [f'log_sf_inf_{bp}' for bp in prestored_bandpasses]
-        param_names += [f'mag_{bp}' for bp in prestored_bandpasses]
+        param_names += [f'{bp}' for bp in prestored_bandpasses]
         param_names += ['redshift']
         param_names += [f'log_rf_tau_{bp}' for bp in prestored_bandpasses]
         self.param_names = param_names
@@ -142,10 +142,10 @@ class DRWDataset(Dataset):
             # Render LC for each filter
             for bp in self.bandpasses:
                 bp_int = self.bp_to_int[bp]
-                tau = params_dict[f'log_rf_tau_{bp}']
+                log_rf_tau = params_dict[f'log_rf_tau_{bp}']
                 log_sf_inf = params_dict[f'log_sf_inf_{bp}']
-                mean_mag = params_dict[f'mag_{bp}']
-                y = self._generate_light_curve(index, tau, log_sf_inf,
+                mean_mag = params_dict[f'{bp}']
+                y = self._generate_light_curve(index, log_rf_tau, log_sf_inf,
                                                mean_mag, z)  # [3650,]
                 y_concat[:, bp_int] = y
             # Sort params in predetermined ordering
@@ -184,8 +184,8 @@ class DRWDataset(Dataset):
         # Shifted rest-frame times
         t_rest = self.get_t_obs()/(1.0 + z)
         # DRW flux
-        tau = log_rf_tau**10.0
-        sf_inf = log_sf_inf**10.0
+        tau = 10**log_rf_tau
+        sf_inf = 10**log_sf_inf
         y = drw_utils.get_drw_torch(t_rest, tau, z, sf_inf,
                                     xmean=mean)  # [T,]
         return y
@@ -299,7 +299,7 @@ if __name__ == '__main__':
                 # z = np.maximum(np.random.randn(N) + 2.0, 0.5)
                 sample_dict[f'log_rf_tau_{bp}'] = tau
                 sample_dict[f'log_sf_inf_{bp}'] = log_sf_inf
-                sample_dict[f'mag_{bp}'] = mag
+                sample_dict[f'{bp}'] = mag
             sample_dict['redshift'] = 2.0
             sample_dict['M_i'] = -16.0
             sample_dict['BH_mass'] = 10.0
@@ -308,7 +308,7 @@ if __name__ == '__main__':
     train_seed = 123
     sampler = Sampler(train_seed, bandpasses=['i'])
 
-    train_dataset = DRWDataset(sampler, 'train_drw',
+    train_dataset = DRWDataset(sampler, 'train_drw_s82',
                                num_samples=3,
                                seed=train_seed,
                                shift_x=-3650*0.5,
