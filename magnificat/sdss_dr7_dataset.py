@@ -29,8 +29,8 @@ def load_sdss_dr7_catalogs(bandpasses):
     # Cols of s82drew_*.dat
     # http://faculty.washington.edu/ivezic/macleod/qso_dr7/Southern_format_drw.html
     drw_columns = ['SDR5ID', 'ra', 'dec', 'redshift', 'M_i', 'log_mass_BH', 'chi2']
-    drw_columns += ['log_tau', 'log_tau_lowlim', 'log_tau_uplim']
-    drw_columns += ['log_sighat', 'log_sfhat_lowlim', 'log_sfhat_uplim']
+    drw_columns += ['log_tau', 'log_sighat', 'log_tau_lowlim', 'log_tau_uplim']
+    drw_columns += ['log_sfhat_lowlim', 'log_sfhat_uplim']
     drw_columns += ['edge', 'll_model', 'll_noise', 'll_inf', 'mu', 'N_obs']
     # Dictionary of pandas dataframes, each dataframe representing the band
     drw_dict = {}
@@ -386,7 +386,10 @@ class SDSSDR7Dataset(Dataset):
         self.std_params = var_params**0.5
 
     def __len__(self):
-        return self.num_samples
+        if hasattr(self, 'metadata'):
+            return self.metadata.shape[0]
+        else:
+            return 0
 
 
 if __name__ == '__main__':
