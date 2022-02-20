@@ -32,8 +32,11 @@ class DC2Sampler:
                        'redshift_x': 'redshift',
                        'blackHoleMass': 'BH_mass'}
         for bp in list('ugrizy'):
-            rename_dict.update({f'agn_sf_{bp}': f'SF_inf_{bp}',
-                                f'agn_tau_{bp}': f'tau_{bp}'})
+            # Log DRW params, since logged is closer to normal
+            df[f'log_sf_inf_{bp}'] = np.log10(df[f'agn_sf_{bp}'].values)
+            df[f'log_rf_tau_{bp}'] = np.log10(df[f'agn_tau_{bp}'].values)
+            df.drop([f'agn_sf_{bp}', f'agn_tau_{bp}'],
+                    columns=True, inplace=True)
         df.rename(rename_dict, inplace=True, axis=1)
         return df
 
