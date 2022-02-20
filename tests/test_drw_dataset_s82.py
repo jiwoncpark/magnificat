@@ -28,7 +28,7 @@ class TestDRWDatasetS82S82Sampler(unittest.TestCase):
         sampler.process_metadata()
         sampler.idx = [0, 1]
         obs_kwargs = dict(n_pointings_init=3,
-                          obs_dir='obs_testing',
+                          obs_dir=self.obs_dir,
                           bandpasses=list('ugriz'))
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
@@ -36,7 +36,6 @@ class TestDRWDatasetS82S82Sampler(unittest.TestCase):
                                  is_training=True,
                                  transform_x_func=lambda x: x,
                                  transform_y_func=lambda x: x,
-                                 err_y=0.01,
                                  prestored_bandpasses=list('ugriz'),
                                  seed=123,
                                  obs_kwargs=obs_kwargs)
@@ -54,7 +53,7 @@ class TestDRWDatasetS82S82Sampler(unittest.TestCase):
         sampler.process_metadata()
         sampler.idx = [0, 1]
         obs_kwargs = dict(n_pointings_init=3,
-                          obs_dir='obs_testing',
+                          obs_dir=self.obs_dir,
                           bandpasses=list('ugriz'))
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
@@ -62,7 +61,6 @@ class TestDRWDatasetS82S82Sampler(unittest.TestCase):
                                  is_training=True,
                                  transform_x_func=lambda x: x,
                                  transform_y_func=lambda x: x,
-                                 err_y=0.01,
                                  prestored_bandpasses=list('ugriz'),
                                  seed=123,
                                  obs_kwargs=obs_kwargs)
@@ -77,7 +75,7 @@ class TestDRWDatasetS82S82Sampler(unittest.TestCase):
         sampler.process_metadata()
         sampler.idx = [0, 1]
         obs_kwargs = dict(n_pointings_init=3,
-                          obs_dir='obs_testing',
+                          obs_dir=self.obs_dir,
                           bandpasses=list('ugriz'))
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
@@ -85,7 +83,6 @@ class TestDRWDatasetS82S82Sampler(unittest.TestCase):
                                  is_training=True,
                                  transform_x_func=lambda x: x,
                                  transform_y_func=lambda x: x,
-                                 err_y=0.01,
                                  prestored_bandpasses=list('ugriz'),
                                  seed=123,
                                  obs_kwargs=obs_kwargs)
@@ -104,7 +101,7 @@ class TestDRWDatasetS82S82Sampler(unittest.TestCase):
         sampler.process_metadata()
         sampler.idx = [0, 1]
         obs_kwargs = dict(n_pointings_init=3,
-                          obs_dir='obs_testing',
+                          obs_dir=self.obs_dir,
                           bandpasses=list('ugriz'))
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
@@ -112,7 +109,6 @@ class TestDRWDatasetS82S82Sampler(unittest.TestCase):
                                  is_training=True,
                                  transform_x_func=lambda x: x,
                                  transform_y_func=lambda x: x,
-                                 err_y=0.01,
                                  prestored_bandpasses=list('ugriz'),
                                  seed=123,
                                  obs_kwargs=obs_kwargs)
@@ -133,6 +129,47 @@ class TestDRWDatasetS82S82Sampler(unittest.TestCase):
         # trimmed_mask
         np.testing.assert_array_equal(data['trimmed_mask'].shape,
                                       [drw_dataset.trimmed_T, 5])
+
+    def test_getitem_singleband(self):
+        """Test `__getitem__`
+        """
+        agn_params = ['BH_mass', 'redshift', 'M_i', 'i']
+        sampler = S82Sampler(agn_params=agn_params,
+                             bp_params=['log_rf_tau', 'log_sf_inf'],
+                             bandpasses=list('i'),
+                             out_dir=self.sampler_dir,
+                             seed=123)
+        sampler.process_metadata()
+        sampler.idx = [0, 1]
+        obs_kwargs = dict(n_pointings_init=3,
+                          obs_dir=self.obs_dir,
+                          bandpasses=list('i'))
+        drw_dataset = DRWDataset(sampler,
+                                 self.out_dir,
+                                 num_samples=2,
+                                 is_training=True,
+                                 transform_x_func=lambda x: x,
+                                 transform_y_func=lambda x: x,
+                                 prestored_bandpasses=list('i'),
+                                 seed=123,
+                                 obs_kwargs=obs_kwargs)
+        data = drw_dataset[0]
+        # bandpasses
+        np.testing.assert_array_equal(drw_dataset.bandpasses,
+                                      list('i'))
+        np.testing.assert_array_equal(drw_dataset.bandpasses_int,
+                                      [3])
+        # x
+        assert len(data['x']) == drw_dataset.trimmed_T
+        # y
+        np.testing.assert_array_equal(data['y'].shape,
+                                      [drw_dataset.trimmed_T, 1])
+        assert not (data['y'] < -50).any()  # can't be -99
+        # param
+        assert len(data['params']) == len(drw_dataset.param_names)
+        # trimmed_mask
+        np.testing.assert_array_equal(data['trimmed_mask'].shape,
+                                      [drw_dataset.trimmed_T, 1])
 
     def tearDown(self):
         shutil.rmtree(self.out_dir)
