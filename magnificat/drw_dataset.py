@@ -15,7 +15,7 @@ class DRWDataset(Dataset):
     int_to_bp = dict(zip(range(6), list('ugrizy')))
 
     def __init__(self,
-                 SF_inf_tau_mean_z_sampler,
+                 params_sampler,
                  out_dir,
                  num_samples,
                  is_training,
@@ -29,7 +29,7 @@ class DRWDataset(Dataset):
 
         Parameters
         ----------
-        SF_inf_tau_mean_z_sampler : flexible
+        params_sampler : flexible
             Any sampler that has a `sample()` method returning a dict
             of `self.param_names` (see below) and has an attribute
             `bandpasses` which is a list of strings indicating which
@@ -57,19 +57,19 @@ class DRWDataset(Dataset):
             sampling observation conditions for each light curve, defaults to
             `seed`), 'bandpasses' (list of bandpasses to include in trimming)
         """
-        self.SF_inf_tau_mean_z_sampler = SF_inf_tau_mean_z_sampler
+        self.params_sampler = params_sampler
         # Figure out which bandpasses are sampled
-        bandpasses = self.SF_inf_tau_mean_z_sampler.bandpasses
+        bandpasses = self.params_sampler.bandpasses
         self.bandpasses_int = [self.bp_to_int[bp] for bp in bandpasses]
         self.bandpasses_int.sort()
         self.bandpasses = [self.int_to_bp[bp_i] for bp_i in self.bandpasses_int]
         # Compile list of parameters, both bp-dependent and otherwise
         # Determined at data generation time
         param_names = ['BH_mass', 'M_i']
-        param_names += [f'SF_inf_{bp}' for bp in prestored_bandpasses]
+        param_names += [f'log_sf_inf_{bp}' for bp in prestored_bandpasses]
         param_names += [f'mag_{bp}' for bp in prestored_bandpasses]
         param_names += ['redshift']
-        param_names += [f'tau_{bp}' for bp in prestored_bandpasses]
+        param_names += [f'log_rf_tau_{bp}' for bp in prestored_bandpasses]
         self.param_names = param_names
         # Create output directory for this dataset
         self.out_dir = out_dir
@@ -97,7 +97,7 @@ class DRWDataset(Dataset):
         # Generate and prestore light curves
         self._generate_x_y_params()
         np.savetxt(os.path.join(out_dir, 'cat_idx.txt'),
-                   self.SF_inf_tau_mean_z_sampler.idx, fmt='%i')
+                   self.params_sampler.idx, fmt='%i')
         self._fully_obs = False  # init property
         self._add_noise = True  # init property
 
@@ -136,16 +136,16 @@ class DRWDataset(Dataset):
             if osp.exists(osp.join(self.out_dir, f'drw_{index}.pt')):
                 continue
             # Sample params
-            params_dict = self.SF_inf_tau_mean_z_sampler.sample()
+            params_dict = self.params_sampler.sample()
             z = params_dict['redshift']
             y_concat = torch.ones([self.n_points, 6])*(-99)  # [3650, 6]
             # Render LC for each filter
             for bp in self.bandpasses:
                 bp_int = self.bp_to_int[bp]
-                tau = params_dict[f'tau_{bp}']
-                SF_inf = params_dict[f'SF_inf_{bp}']
+                tau = params_dict[f'log_rf_tau_{bp}']
+                log_sf_inf = params_dict[f'log_sf_inf_{bp}']
                 mean_mag = params_dict[f'mag_{bp}']
-                y = self._generate_light_curve(index, tau, SF_inf,
+                y = self._generate_light_curve(index, tau, log_sf_inf,
                                                mean_mag, z)  # [3650,]
                 y_concat[:, bp_int] = y
             # Sort params in predetermined ordering
@@ -157,7 +157,7 @@ class DRWDataset(Dataset):
             torch.save((y_concat, params),
                        osp.join(self.out_dir, f'drw_{index}.pt'))
 
-    def _generate_light_curve(self, index, tau, SF_inf, mean, z):
+    def _generate_light_curve(self, index, log_rf_tau, log_sf_inf, mean, z):
         """Generate a single light curve in a given filter.
         Rendering is done in the rest frame, with the input params
         assumed to be in the rest frame.
@@ -166,10 +166,10 @@ class DRWDataset(Dataset):
         ----------
         index : int
             index within the dataset
-        tau : float
-            rest-frame timescale
-        SF_inf : float
-            rest-frame asymptotic amplitude
+        log_rf_tau : float
+            log10 of rest-frame timescale in days
+        log_sf_inf : float
+            log10 of rest-frame asymptotic amplitude in mag
         mean : float
             mean static magnitude
         z : float
@@ -184,7 +184,9 @@ class DRWDataset(Dataset):
         # Shifted rest-frame times
         t_rest = self.get_t_obs()/(1.0 + z)
         # DRW flux
-        y = drw_utils.get_drw_torch(t_rest, tau, z, SF_inf,
+        tau = log_rf_tau**10.0
+        sf_inf = log_sf_inf**10.0
+        y = drw_utils.get_drw_torch(t_rest, tau, z, sf_inf,
                                     xmean=mean)  # [T,]
         return y
 
@@ -287,16 +289,16 @@ if __name__ == '__main__':
         def sample(self):
             sample_dict = dict()
             for bp in self.bandpasses:
-                SF_inf = np.maximum(np.random.randn()*0.05 + 0.2, 0.2)
-                # SF_inf = 10**(np.random.randn(N)*(0.25) + -0.8)
-                # SF_inf = np.ones(N)*0.15
+                log_sf_inf = np.maximum(np.random.randn()*0.05 + 0.2, 0.2)
+                # log_sf_inf = 10**(np.random.randn(N)*(0.25) + -0.8)
+                # log_sf_inf = np.ones(N)*0.15
                 # tau = 10.0**np.maximum(np.random.randn(N)*0.5 + 2.0, 0.1)
                 tau = np.maximum(np.random.randn()*50.0 + 200.0, 10.0)
                 # mag = np.maximum(np.random.randn(N) + 19.0, 17.5)
                 mag = 0.0
                 # z = np.maximum(np.random.randn(N) + 2.0, 0.5)
-                sample_dict[f'tau_{bp}'] = tau
-                sample_dict[f'SF_inf_{bp}'] = SF_inf
+                sample_dict[f'log_rf_tau_{bp}'] = tau
+                sample_dict[f'log_sf_inf_{bp}'] = log_sf_inf
                 sample_dict[f'mag_{bp}'] = mag
             sample_dict['redshift'] = 2.0
             sample_dict['M_i'] = -16.0
@@ -314,7 +316,7 @@ if __name__ == '__main__':
                                delta_x=1.0,
                                max_x=3650.0,
                                err_y=0.01)
-    train_dataset.slice_params = [train_dataset.param_names.index(n) for n in ['tau_i', 'SF_inf_i', 'M_i']]
+    train_dataset.slice_params = [train_dataset.param_names.index(n) for n in ['log_rf_taui', 'log_sf_inf_i', 'M_i']]
     train_dataset.log_params = [True, True, False]
     train_dataset.get_normalizing_metadata()
     print(train_dataset.mean_params, train_dataset.std_params)
