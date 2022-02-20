@@ -21,7 +21,6 @@ class DRWDataset(Dataset):
                  is_training,
                  transform_x_func=lambda x: x,
                  transform_y_func=lambda x: x,
-                 err_y=0.01,
                  prestored_bandpasses=list('ugrizy'),
                  seed=123,
                  obs_kwargs={}):
@@ -44,8 +43,6 @@ class DRWDataset(Dataset):
         transform_x_func : callable, optional
             Transform function for the times x, useful if the ML model is
             sensitive to the absolute scale of time. Default: identity function
-        err_y : float, optional
-            1-sigma scatter in the photometric error, in mag
         prestored_bandpasses : TYPE, optional
             Description
         seed : int, optional
@@ -82,7 +79,6 @@ class DRWDataset(Dataset):
         self.transform_y_func = transform_y_func
         self.delta_x = 1.0  # 1-day interval
         self.max_x = 3650.0  # LSST 10-year
-        self.err_y = err_y
         # Preview of untrimmed times
         self.x_grid = np.arange(0, self.max_x, self.delta_x)
         self.x_grid = self.transform_x_func(self.x_grid)
@@ -222,8 +218,6 @@ class DRWDataset(Dataset):
         # Rescale x for numerical stability of ML model
         x = self.transform_x_func(x)
         # Add noise and rescale flux to [-1, 1]
-        if self.add_noise:
-            y += torch.randn_like(y)*self.err_y
         y = self.transform_y_func(y)
         # y = (y - torch.min(y))/(torch.max(y) - torch.min(y))*2.0 - 1.0
         if self.slice_params is not None:
