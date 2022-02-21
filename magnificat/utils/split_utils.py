@@ -53,6 +53,7 @@ def random_split(indices, frac_val, seed):
     -------
     tuple
         Training indices, validation indices
+
     """
     rng = np.random.default_rng(seed)
     val_i = rng.choice(indices,
