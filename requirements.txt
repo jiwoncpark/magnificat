@@ -1,0 +1,11 @@
+numpy
+torch
+scipy
+pandas
+matplotlib
+nose
+ipykernel
+tqdm
+pyyaml
+corner
+astropy<5
