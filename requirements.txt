@@ -9,3 +9,4 @@ tqdm
 pyyaml
 corner
 astropy<5
+healpy
