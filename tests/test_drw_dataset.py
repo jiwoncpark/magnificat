@@ -1,3 +1,4 @@
+import os
 import unittest
 import shutil
 import numpy as np
@@ -21,8 +22,8 @@ class Sampler:
             # mag = np.maximum(np.random.randn(N) + 19.0, 17.5)
             mag = 0.0
             # z = np.maximum(np.random.randn(N) + 2.0, 0.5)
-            sample_dict[f'tau_{bp}'] = tau
-            sample_dict[f'SF_inf_{bp}'] = SF_inf
+            sample_dict[f'log_rf_tau_{bp}'] = tau
+            sample_dict[f'log_sf_inf_{bp}'] = SF_inf
             sample_dict[f'mag_{bp}'] = mag
         sample_dict['redshift'] = 2.0
         sample_dict['M_i'] = -16.0
@@ -36,6 +37,7 @@ class TestDRWDataset(unittest.TestCase):
     """
     def setUp(self):
         self.out_dir = 'drw_data_testing'
+        os.makedirs(self.out_dir, exist_ok=True)
 
     def test_constructor(self):
         """Test input and output shapes of get_pointings
@@ -45,7 +47,6 @@ class TestDRWDataset(unittest.TestCase):
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
                                  num_samples=2,
-                                 n_pointings_init=10,
                                  is_training=True)
 
     def test_seeding(self):
@@ -57,7 +58,6 @@ class TestDRWDataset(unittest.TestCase):
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
                                  num_samples=2,
-                                 n_pointings_init=10,
                                  is_training=True)
         n_pointings_run0 = drw_dataset.cadence_obj.n_pointings
         # Run 1
@@ -65,7 +65,6 @@ class TestDRWDataset(unittest.TestCase):
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
                                  num_samples=2,
-                                 n_pointings_init=10,
                                  is_training=True)
         n_pointings_run1 = drw_dataset.cadence_obj.n_pointings
         np.testing.assert_equal(n_pointings_run0, n_pointings_run1)
@@ -78,7 +77,6 @@ class TestDRWDataset(unittest.TestCase):
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
                                  num_samples=3,
-                                 n_pointings_init=10,
                                  is_training=True,
                                  shift_x=0.0,
                                  rescale_x=1.0,
@@ -109,7 +107,6 @@ class TestDRWDataset(unittest.TestCase):
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
                                  num_samples=3,
-                                 n_pointings_init=10,
                                  is_training=True,
                                  shift_x=0.0,
                                  rescale_x=1.0,
@@ -142,7 +139,7 @@ class TestDRWDataset(unittest.TestCase):
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
                                  num_samples=3,
-                                 n_pointings_init=10,
+
                                  is_training=False,
                                  err_y=0.0)
         param0 = drw_dataset[0]['params']
@@ -165,14 +162,13 @@ class TestDRWDataset(unittest.TestCase):
         drw_dataset = DRWDataset(sampler,
                                  self.out_dir,
                                  num_samples=3,
-                                 n_pointings_init=10,
                                  is_training=False,
                                  err_y=0.0)
         # Without log
         params = np.stack([drw_dataset[i]['params'] for i in range(3)],
                           axis=0)
         # With log
-        log_param_names = ['SF_inf_i', 'tau_g']
+        log_param_names = ['log_sf_inf_i', 'log_rf_tau_g']
         to_log = [drw_dataset.param_names.index(p) for p in log_param_names]
         drw_dataset.log_params = to_log
         params_log = np.stack([drw_dataset[i]['params'] for i in range(3)],
