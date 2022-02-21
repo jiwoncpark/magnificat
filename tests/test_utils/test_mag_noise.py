@@ -11,8 +11,8 @@ class TestMagNoise(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.seed = 123
-        cls.mags_np = np.random.randn(100, 5)*1 + 22  # random simulated mags
-        cls.mags_torch = torch.randn(100, 5)*1 + 22  # random simulated mags
+        cls.mags_np = np.random.randn(100, 5)*1 + 20  # random simulated mags
+        cls.mags_torch = torch.tensor(cls.mags_np)  # random simulated mags
 
     def test_mag_noise_np_ugriz(self):
         """Check if noised mags are within reasonable range"""
@@ -23,7 +23,7 @@ class TestMagNoise(unittest.TestCase):
                                 airmass=1.15304)
         noised = mag_noise_np(self.mags_np)
         np.testing.assert_array_less(noised, np.ones_like(noised)*25)
-        np.testing.assert_array_less(np.ones_like(noised)*18, noised)
+        np.testing.assert_array_less(np.ones_like(noised)*15, noised)
 
     def test_mag_noise_torch_ugriz(self):
         """Check if noised mags are within reasonable range"""
@@ -34,7 +34,7 @@ class TestMagNoise(unittest.TestCase):
                                         airmass=1.15304)
         noised = mag_noise_torch(self.mags_torch)
         np.testing.assert_array_less(noised, np.ones_like(noised)*25)
-        np.testing.assert_array_less(np.ones_like(noised)*18, noised)
+        np.testing.assert_array_less(np.ones_like(noised)*15, noised)
 
 
 if __name__ == '__main__':
