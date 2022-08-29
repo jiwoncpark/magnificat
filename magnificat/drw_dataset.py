@@ -139,6 +139,9 @@ class DRWDataset(Dataset):
             for bp in self.bandpasses:
                 bp_int = self.bp_to_int[bp]
                 log_rf_tau = params_dict[f'log_rf_tau_{bp}']
+                # Upper bound tau at 1 day b/c smaller will result in
+                # runaway light curve
+                log_rf_tau = max(0.0, log_rf_tau)
                 log_sf_inf = params_dict[f'log_sf_inf_{bp}']
                 mean_mag = params_dict[f'{bp}']
                 y = self._generate_light_curve(index, log_rf_tau, log_sf_inf,
